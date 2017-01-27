@@ -560,6 +560,173 @@ namespace MXNetSharp
 
         #endregion
 
+        #region Executor interface
+
+        /// <summary>
+        /// Delete the executor
+        /// </summary>
+        /// <param name="handle">the executor</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorFree(ExecutorHandle handle);
+
+        /// <summary>
+        /// Print the content of execution plan, used for debug.
+        /// </summary>
+        /// <param name="handle">handle the executor.</param>
+        /// <param name="out_str">pointer to hold the output string of the printing.</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorPrint(ExecutorHandle handle, byte** out_str);
+
+        /// <summary>
+        /// Executor forward method
+        /// </summary>
+        /// <param name="handle">handle executor handle</param>
+        /// <param name="is_train">int value to indicate whether the forward pass is for evaluation</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorForward(ExecutorHandle handle, int is_train);
+
+        /// <summary>
+        /// Excecutor run backward
+        /// </summary>
+        /// <param name="handle">handle execute handle</param>
+        /// <param name="len">lenth</param>
+        /// <param name="head_grads">NDArray handle for heads' gradient</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorBackward(ExecutorHandle handle,
+                                 mx_uint len,
+                                 NDArrayHandle* head_grads);
+
+
+        /// <summary>
+        /// Get executor's head NDArray
+        /// </summary>
+        /// <param name="handle">executor handle</param>
+        /// <param name="out_size">output narray vector size</param>
+        /// <param name="pOut">out put narray handles</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorOutputs(ExecutorHandle handle,
+                                mx_uint* out_size,
+                                NDArrayHandle** pOut);
+
+        /// <summary>
+        /// Generate Executor from symbol
+        /// </summary>
+        /// <param name="symbol_handle">symbol handle</param>
+        /// <param name="dev_type">device type</param>
+        /// <param name="dev_id">device id</param>
+        /// <param name="len">length</param>
+        /// <param name="in_args">in args array</param>
+        /// <param name="arg_grad_store">arg grads handle array</param>
+        /// <param name="grad_req_type">grad req array</param>
+        /// <param name="aux_states_len">length of auxiliary states</param>
+        /// <param name="aux_states">auxiliary states array</param>
+        /// <param name="pOut">output executor handle</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorBind(SymbolHandle symbol_handle,
+                             int dev_type,
+                             int dev_id,
+                             mx_uint len,
+                             NDArrayHandle* in_args,
+                             NDArrayHandle* arg_grad_store,
+                             mx_uint* grad_req_type,
+                             mx_uint aux_states_len,
+                             NDArrayHandle* aux_states,
+                             ExecutorHandle* pOut);
+
+        /// <summary>
+        /// Generate Executor from symbol,
+        /// This is advanced function, allow specify group2ctx map.
+        /// The user can annotate "ctx_group" attribute to name each group.
+        /// </summary>
+        /// <param name="symbol_handle">symbol handle</param>
+        /// <param name="dev_type">device type of default context</param>
+        /// <param name="dev_id">device id of default context</param>
+        /// <param name="num_map_keys">size of group2ctx map</param>
+        /// <param name="map_keys">keys of group2ctx map</param>
+        /// <param name="map_dev_types">device type of group2ctx map</param>
+        /// <param name="map_dev_ids">device id of group2ctx map</param>
+        /// <param name="len">length</param>
+        /// <param name="in_args">in args array</param>
+        /// <param name="arg_grad_store">arg grads handle array</param>
+        /// <param name="grad_req_type">grad req array</param>
+        /// <param name="aux_states_len">length of auxiliary states</param>
+        /// <param name="aux_states">auxiliary states array</param>
+        /// <param name="pOut">output executor handle</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorBindX(SymbolHandle symbol_handle,
+                              int dev_type,
+                              int dev_id,
+                              mx_uint num_map_keys,
+                              Byte** map_keys,
+                               int* map_dev_types,
+                               int* map_dev_ids,
+                              mx_uint len,
+                              NDArrayHandle* in_args,
+                              NDArrayHandle *arg_grad_store,
+                              mx_uint* grad_req_type,
+                              mx_uint aux_states_len,
+                              NDArrayHandle* aux_states,
+                              ExecutorHandle * pOut);
+
+        /// <summary>
+        ///  Generate Executor from symbol,
+        ///  This is advanced function, allow specify group2ctx map.
+        ///  The user can annotate "ctx_group" attribute to name each group.
+        /// </summary>
+        /// <param name="symbol_handle">symbol handle</param>
+        /// <param name="dev_type">device type of default context</param>
+        /// <param name="dev_id">device id of default context</param>
+        /// <param name="num_map_keys">size of group2ctx map</param>
+        /// <param name="map_keys">keys of group2ctx map</param>
+        /// <param name="map_dev_types">device type of group2ctx map</param>
+        /// <param name="map_dev_ids">device id of group2ctx map</param>
+        /// <param name="len">length</param>
+        /// <param name="in_args">in args array</param>
+        /// <param name="arg_grad_store">arg grads handle array</param>
+        /// <param name="grad_req_type">grad req array</param>
+        /// <param name="aux_states_len">length of auxiliary states</param>
+        /// <param name="aux_states">auxiliary states array</param>
+        /// <param name="shared_exec">input executor handle for memory sharing</param>
+        /// <param name="pOut">output executor handle</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorBindEX(SymbolHandle symbol_handle,
+                               int dev_type,
+                               int dev_id,
+                               mx_uint num_map_keys,
+                               byte** map_keys,
+                                int* map_dev_types,
+                                int* map_dev_ids,
+                               mx_uint len,
+                               NDArrayHandle* in_args,
+                               NDArrayHandle *arg_grad_store,
+                               mx_uint* grad_req_type,
+                               mx_uint aux_states_len,
+                               NDArrayHandle* aux_states,
+                               ExecutorHandle shared_exec,
+                               ExecutorHandle* pOut);
+
+
+        /// <summary>
+        /// set a call back to notify the completion of operation
+        /// </summary>
+        /// <param name="handle"></param>
+        /// <param name="callback"></param>
+        /// <param name="callback_handle"></param>
+        /// <returns></returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXExecutorSetMonitorCallback(ExecutorHandle handle,
+                                           ExecutorMonitorCallback callback,
+                                           void* callback_handle);
+
+        #endregion
     }
 
     public enum OpReqType
