@@ -1,0 +1,10 @@
+src/MXNetSharp/obj/
+src/MXNetSharp.Test/bin/
+src/MXNetSharp.Test/obj/
+*.lock.json
+src/MXNetSharp/bin/
+.vs/
+bin
+obj
+Debug
+Release
