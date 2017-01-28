@@ -72,6 +72,39 @@ namespace MXNetSharp
         }
     }
 
+    public unsafe class UInt32ListHolder : IDisposable
+    {
+        private UInt32* _handle;
+        public UInt32* Handle
+        {
+            get
+            {
+                return _handle;
+            }
+        }
+
+        public UInt32ListHolder(IList<UInt32> list)
+        {
+            _handle = (UInt32*)Marshal.AllocHGlobal(sizeof(UInt32) * list.Count);
+            for (int i = 0; i < list.Count; i++)
+                _handle[i] = list[i];
+        }
+
+        ~UInt32ListHolder()
+        {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_handle != null)
+            {
+                Marshal.FreeHGlobal((IntPtr)_handle);
+                _handle = null;
+            }
+        }
+    }
+
     public unsafe class IntPtrListHolder : IDisposable
     {
         private IntPtr* _handle;
@@ -125,7 +158,7 @@ namespace MXNetSharp
                 _hList.Add(new StringHolder(item));
 
             _pointer = (Byte**)Marshal.AllocHGlobal(sizeof(IntPtr) * list.Count);
-            for(int i = 0; i < list.Count; i++)
+            for (int i = 0; i < list.Count; i++)
             {
                 StringHolder h = new StringHolder(list[i]);
                 _hList.Add(h);
@@ -145,7 +178,7 @@ namespace MXNetSharp
             Marshal.FreeHGlobal((IntPtr)_pointer);
             _pointer = null;
 
-            if(_hList != null)
+            if (_hList != null)
             {
                 foreach (var item in _hList)
                     item.Dispose();
@@ -196,6 +229,11 @@ namespace MXNetSharp
         public static IntPtrListHolder GetHolder(this IList<IntPtr> list)
         {
             return new IntPtrListHolder(list);
+        }
+
+        public static UInt32ListHolder GetHolder(this IList<UInt32> list)
+        {
+            return new UInt32ListHolder(list);
         }
     }
 
@@ -370,7 +408,8 @@ namespace MXNetSharp
         /// </summary>
         /// <param name="device_id">id of the device</param>
         /// <returns>the corresponding GPU context</returns>
-        public static Context Gpu(int device_id = 0) {
+        public static Context Gpu(int device_id = 0)
+        {
             return new Context(DeviceType.kGPU, device_id);
         }
 
@@ -379,7 +418,8 @@ namespace MXNetSharp
         /// </summary>
         /// <param name="device_id">id of the device. this is not needed by CPU</param>
         /// <returns>the corresponding CPU context</returns>
-        public static Context Cpu(int device_id = 0) {
+        public static Context Cpu(int device_id = 0)
+        {
             return new Context(DeviceType.kCPU, device_id);
         }
     }
@@ -408,7 +448,7 @@ namespace MXNetSharp
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
-         ~NDBlob()
+        ~NDBlob()
         {
             Dispose();
         }
@@ -467,7 +507,7 @@ namespace MXNetSharp
         }
 
         public NDArray(Shape shape, Context context, bool delay_alloc = true)
-            :this(shape.Data,context,delay_alloc)
+            : this(shape.Data, context, delay_alloc)
         {
         }
 
@@ -496,7 +536,7 @@ namespace MXNetSharp
             mx_float[] dataArr = data.ToArray();
             mx_uint[] arr = shape.Data.ToArray();
             fixed (mx_uint* pArr = arr)
-            fixed(mx_float* pDataArr = dataArr)
+            fixed (mx_float* pDataArr = dataArr)
             {
                 NDArrayHandle handle;
                 Logging.CHECK_EQ(CAPI.MXNDArrayCreate(pArr, (uint)shape.NDim, (int)context.DeviceType,
@@ -507,7 +547,8 @@ namespace MXNetSharp
             }
         }
 
-        public NDArray(mx_float* data, Shape shape, Context context) {
+        public NDArray(mx_float* data, Shape shape, Context context)
+        {
 
             mx_uint[] arr = shape.Data.ToArray();
             fixed (mx_uint* pArr = arr)
@@ -521,10 +562,38 @@ namespace MXNetSharp
             }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <returns>the shape of current NDArray, in the form of mx_uint vector</returns>
+        public List<mx_uint> GetShape()
+        {
+            mx_uint* out_pdata;
+            mx_uint out_dim;
+            CAPI.MXNDArrayGetShape(Handle, &out_dim, &out_pdata);
+            List<mx_uint> ret = new List<mx_uint>();
+            for (mx_uint i = 0; i < out_dim; ++i)
+            {
+                ret.Add(out_pdata[i]);
+            }
+            return ret;
+        }
+
+        /// <summary>
+        /// Sample gaussian distribution for each elements of out.
+        /// </summary>
+        /// <param name="mu">mean of gaussian distribution.</param>
+        /// <param name="sigma">standard deviation of gaussian distribution.</param>
+        /// <param name="pOut">output NDArray</param>
+        public static void SampleGaussian(mx_float mu, mx_float sigma, NDArray pOut)
+        {
+            new Operator("_sample_normal").Set(mu, sigma).Invoke(pOut);
+        }
+
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
-         ~NDArray()
+        ~NDArray()
         {
             Dispose();
         }
@@ -534,7 +603,7 @@ namespace MXNetSharp
             if (!disposedValue)
             {
                 disposedValue = true;
-                if(_blob!=null)
+                if (_blob != null)
                 {
                     _blob.Dispose();
                     _blob = null;
@@ -613,7 +682,7 @@ namespace MXNetSharp
 
         public AtomicSymbolCreator GetSymbolCreator(String name)
         {
-            if(symbol_creators_.ContainsKey(name) ==false)
+            if (symbol_creators_.ContainsKey(name) == false)
                 return GetOpHandle(name);
             return symbol_creators_[name];
         }
@@ -711,7 +780,7 @@ namespace MXNetSharp
         /// <returns>reference of self</returns>
         public Operator AddRange(List<Symbol> symbols)
         {
-            foreach(Symbol item in symbols)
+            foreach (Symbol item in symbols)
                 input_symbols.Add(item.Handle);
             return this;
         }
@@ -761,20 +830,18 @@ namespace MXNetSharp
             return this;
         }
 
-        /// <summary>
-        /// add positional inputs
-        /// </summary>
-        /// <param name="args"></param>
-        public void PushInput(params Object[] args)
+        public Operator Set(params Object[] args)
         {
             for (int i = 0; i < args.Length; i++)
-                SetParam(i, args[i]);
-        }
-
-        public Operator AddRange(params Object[] args)
-        {
-            for (int i = 0; i < args.Length; i++)
-                SetParam(i, args[i]);
+            {
+                Object arg = args[i];
+                if (arg is Symbol)
+                    SetParam(i, (Symbol)arg);
+                else if (arg is NDArray)
+                    SetParam(i, (NDArray)arg);
+                else
+                    SetParam(i, arg);
+            }
             return this;
         }
 
@@ -869,7 +936,7 @@ namespace MXNetSharp
                     if (outputs.Count > 0)
                         return;
 
-                    for(int i = 0; i < num_outputs; i++)
+                    for (int i = 0; i < num_outputs; i++)
                     {
                         outputs.Add(new NDArray(pOutputsReceiver[i]));
                     }
@@ -927,7 +994,7 @@ namespace MXNetSharp
             int[] dev_ids = new int[map_keys.Length];
 
             int idx = 0;
-            foreach(var item in group_to_ctx)
+            foreach (var item in group_to_ctx)
             {
                 map_keys[idx] = new StringHolder(item.Key);
                 Context cxt = item.Value;
@@ -945,12 +1012,12 @@ namespace MXNetSharp
             }
 
             ExecutorHandle handle = _handle;
-            fixed(int* pDevTypes = dev_types)
-            fixed(int* pDevIds = dev_ids)
-            fixed(NDArrayHandle* pArgHandles = arg_handles)
+            fixed (int* pDevTypes = dev_types)
+            fixed (int* pDevIds = dev_ids)
+            fixed (NDArrayHandle* pArgHandles = arg_handles)
             fixed (NDArrayHandle* pGradHandles = grad_handles)
             fixed (NDArrayHandle* pAuxHandles = aux_handles)
-            fixed(mx_uint* pReqs = grad_reqs_uint)
+            fixed (mx_uint* pReqs = grad_reqs_uint)
             {
                 IntPtr* pStrings = stackalloc IntPtr[map_keys.Length];
                 for (int i = 0; i < map_keys.Length; i++)
@@ -965,7 +1032,7 @@ namespace MXNetSharp
                            (IntPtr)pSharedExecHandle, &handle),
                 0);
 
-                if(shared_exec !=null)
+                if (shared_exec != null)
                 {
                     shared_exec._handle = sharedExecHandle;
                 }
@@ -1046,7 +1113,7 @@ namespace MXNetSharp
             return Marshal.PtrToStringAnsi((IntPtr)output);
         }
 
-        public Dictionary<String,NDArray> arg_dict()
+        public Dictionary<String, NDArray> arg_dict()
         {
             return GetDict(_symbol.ListArguments(), arg_arrays);
         }
@@ -1080,7 +1147,8 @@ namespace MXNetSharp
         }
 
         Dictionary<String, NDArray> GetDict(List<String> names,
-                                         List<NDArray> arrays) {
+                                         List<NDArray> arrays)
+        {
             Dictionary<String, NDArray> ret = new Dictionary<string, NDArray>();
             HashSet<String> name_set = new HashSet<string>();
             foreach (var name in names)
@@ -1107,7 +1175,7 @@ namespace MXNetSharp
 
         public void Dispose()
         {
-            if(_handle != IntPtr.Zero)
+            if (_handle != IntPtr.Zero)
             {
                 CAPI.MXExecutorFree(_handle);
                 _handle = IntPtr.Zero;
@@ -1169,7 +1237,7 @@ namespace MXNetSharp
 
         public SymbolHandle Handle
         {
-            get { return blob_ptr_.Handle;  }
+            get { return blob_ptr_.Handle; }
         }
 
         /// <summary>
@@ -1193,49 +1261,229 @@ namespace MXNetSharp
             blob_ptr_ = new SymBlob(handle);
         }
 
+        #region operators overrided
+
         public static Symbol operator +(Symbol lhs, Symbol rhs)
         {
-            throw new NotImplementedException();
+            return _Plus(lhs, rhs);
         }
 
         public static Symbol operator -(Symbol lhs, Symbol rhs)
         {
-            throw new NotImplementedException();
+            return _Minus(lhs, rhs);
         }
 
         public static Symbol operator *(Symbol lhs, Symbol rhs)
         {
-            throw new NotImplementedException();
+            return _Mul(lhs, rhs);
         }
 
         public static Symbol operator /(Symbol lhs, Symbol rhs)
         {
-            throw new NotImplementedException();
+            return _Div(lhs, rhs);
         }
 
         public static Symbol operator +(Symbol lhs, mx_float scalar)
         {
-            throw new NotImplementedException();
+            return _PlusScalar(lhs, scalar);
         }
 
         public static Symbol operator -(Symbol lhs, mx_float scalar)
         {
-            throw new NotImplementedException();
+            return _MinusScalar(lhs, scalar);
         }
 
         public static Symbol operator *(Symbol lhs, mx_float scalar)
         {
-            throw new NotImplementedException();
+            return _MulScalar(lhs, scalar);
         }
 
         public static Symbol operator /(Symbol lhs, mx_float scalar)
         {
-            throw new NotImplementedException();
+            return _DivScalar(lhs, scalar);
+        }
+
+        public static Symbol operator +(mx_float scalar, Symbol rhs)
+        {
+            return rhs + scalar;
+        }
+
+        public static Symbol operator -(mx_float scalar, Symbol rhs)
+        {
+            return _RMinusScalar(scalar, rhs);
+        }
+
+        public static Symbol operator *(mx_float scalar, Symbol rhs)
+        {
+            return rhs * scalar;
+        }
+
+        public static Symbol operator /(mx_float scalar, Symbol rhs)
+        {
+            return _RDivScalar(scalar, rhs);
+        }
+
+        #endregion
+
+
+        public static Symbol _Plus(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Plus").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Mul(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Mul").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Minus(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Minus").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Div(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Div").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Power(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Power").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Maximum(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Maximum").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _Minimum(Symbol lhs, Symbol rhs)
+        {
+            return new Operator("_Minimum").Set(lhs, rhs).CreateSymbol();
+        }
+
+        public static Symbol _PlusScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_PlusScalar").Set(lhs).SetParam("scalar", scalar).CreateSymbol();
+        }
+
+        public static Symbol _MinusScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_MinusScalar").Set(lhs).SetParam("scalar", scalar).CreateSymbol();
+        }
+
+        public static Symbol _RMinusScalar(mx_float scalar, Symbol rhs)
+        {
+            return new Operator("_RMinusScalar").Set(rhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _MulScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_MulScalar").Set(lhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _DivScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_DivScalar").Set(lhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _RDivScalar(mx_float scalar, Symbol rhs)
+        {
+            return new Operator("_RDivScalar").Set(rhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _PowerScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_PowerScalar").Set(lhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+        public static Symbol _RPowerScalar(mx_float scalar, Symbol rhs)
+        {
+            return new Operator("_RPowerScalar").Set(rhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _MaximumScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_MaximumScalar").Set(lhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol _MinimumScalar(Symbol lhs, mx_float scalar)
+        {
+            return new Operator("_MinimumScalar").Set(lhs)
+                     .SetParam("scalar", scalar)
+                     .CreateSymbol();
+        }
+
+        public static Symbol Crop(String symbol_name,
+            int num_args,
+            Symbol data,
+            Symbol crop_like,
+            Shape offset,
+            Shape h_w,
+            bool center_crop = false)
+        {
+            return new Operator("Crop")
+              .SetParam("num_args", num_args)
+              .SetParam("offset", offset)
+              .SetParam("h_w", h_w)
+              .SetParam("center_crop", center_crop)
+              .SetInput("arg0", data)
+              .SetInput("arg1", crop_like)
+              .CreateSymbol(symbol_name);
+        }
+
+        public static Symbol SliceChannel(Symbol data,
+                           int num_outputs,
+                           int axis = 1,
+                           bool squeeze_axis = false)
+        {
+            return new Operator("SliceChannel")
+                .SetParam("num_outputs", num_outputs)
+                .SetParam("axis", axis)
+                .SetParam("squeeze_axis", squeeze_axis)
+                .Set(data)
+                .CreateSymbol();
+        }
+
+        /// <summary>
+        /// Apply activation function to input.
+        /// Softmax Activation is only available with CUDNN on GPUand will be
+        /// computed at each location across channel if input is 4D.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol.</param>
+        /// <param name="data">Input data to activation function.</param>
+        /// <param name="act_type">Activation function to be applied. </param>
+        /// <returns>new symbol</returns>
+        public static Symbol Activation(String symbol_name,
+                         Symbol data,
+                         String act_type)
+        {
+            System.Diagnostics.Debug.Assert(act_type == "relu" ||
+                   act_type == "sigmoid" ||
+                   act_type == "softrelu" ||
+                   act_type == "tanh");
+            return new Operator("Activation")
+                     .SetParam("act_type", act_type)
+                     .SetInput("data", data)
+                     .CreateSymbol(symbol_name);
         }
 
         public Symbol this[int index]
         {
-            get {
+            get
+            {
                 SymbolHandle hOut = new NDArrayHandle();
                 CAPI.MXSymbolGetOutput(Handle, (uint)index, &hOut);
                 return new Symbol(hOut);
@@ -1244,9 +1492,10 @@ namespace MXNetSharp
 
         public Symbol this[String name]
         {
-            get {
+            get
+            {
                 var list = ListOutputs();
-                for(int i = 0; i < list.Count; i++)
+                for (int i = 0; i < list.Count; i++)
                 {
                     if (list[i] == name) return this[i];
                 }
@@ -1256,20 +1505,70 @@ namespace MXNetSharp
             }
         }
 
+        /// <summary>
+        /// Create a symbol that groups symbols together
+        /// </summary>
+        /// <param name="symbols">List of symbols to be group</param>
+        /// <returns></returns>
         public static Symbol Group(List<Symbol> symbols)
         {
             SymbolHandle pOut = new SymbolHandle();
             SymbolHandle[] handles = symbols.GetHandles();
-            fixed(SymbolHandle* p = handles)
+            fixed (SymbolHandle* p = handles)
             {
                 CAPI.MXSymbolCreateGroup((uint)symbols.Count, p, &pOut);
             }
             return new Symbol(pOut);
         }
 
+        /// <summary>
+        /// load Symbol from a JSON file
+        /// </summary>
+        /// <param name="fileName">the name of the file</param>
+        /// <returns></returns>
+        public static Symbol Load(String fileName)
+        {
+            SymbolHandle handle;
+            Logging.CHECK_EQ(CAPI.MXSymbolCreateFromFile(fileName, &(handle)), 0);
+            return new Symbol(handle);
+        }
+
+        public static Symbol LoadJSON(String jsonStr)
+        {
+            SymbolHandle handle;
+            Logging.CHECK_EQ(CAPI.MXSymbolCreateFromJSON(jsonStr, &(handle)), 0);
+            return new Symbol(handle);
+        }
+
+        public void Save(String fileName)
+        {
+            Logging.CHECK_EQ(CAPI.MXSymbolSaveToFile(Handle, fileName), 0);
+        }
+
+        public String ToJSON()
+        {
+            Byte* pOut;
+            Logging.CHECK_EQ(CAPI.MXSymbolSaveToJSON(Handle, &pOut), 0);
+            return Marshal.PtrToStringAnsi((IntPtr)pOut);
+        }
+
+        public Symbol GetInternals()
+        {
+            SymbolHandle handle;
+            Logging.CHECK_EQ(CAPI.MXSymbolGetInternals(Handle, &handle), 0);
+            return new Symbol(handle);
+        }
+
         public static Symbol Variable(String name)
         {
             return new Symbol(name);
+        }
+
+        public Symbol Clone()
+        {
+            SymbolHandle handle;
+            Logging.CHECK_EQ(CAPI.MXSymbolCopy(Handle, &handle), 0);
+            return new Symbol(handle);
         }
 
         /// <summary>
@@ -1279,7 +1578,15 @@ namespace MXNetSharp
         /// <returns>the arguments list of this symbol, they can be either named or unnamed (empty string).</returns>
         public List<String> ListArguments()
         {
-            throw new NotImplementedException();
+            List<String> ret = new List<string>();
+            mx_uint size;
+            Byte** sarr;
+            CAPI.MXSymbolListArguments(Handle, &size, &sarr);
+            for (mx_uint i = 0; i < size; ++i)
+            {
+                ret.Add(Marshal.PtrToStringAnsi((IntPtr)(sarr[i])));
+            }
+            return ret;
         }
 
         /// <summary>
@@ -1288,7 +1595,15 @@ namespace MXNetSharp
         /// <returns></returns>
         public List<String> ListOutputs()
         {
-            throw new NotImplementedException();
+            List<String> ret = new List<string>();
+            mx_uint size;
+            Byte** sarr;
+            CAPI.MXSymbolListOutputs(Handle, &size, &sarr);
+            for (mx_uint i = 0; i < size; ++i)
+            {
+                ret.Add(Marshal.PtrToStringAnsi((IntPtr)(sarr[i])));
+            }
+            return ret;
         }
 
         /// <summary>
@@ -1297,7 +1612,281 @@ namespace MXNetSharp
         /// <returns></returns>
         public List<String> ListAuxiliaryStates()
         {
-            throw new NotImplementedException();
+            List<String> ret = new List<string>();
+            mx_uint size;
+            Byte** sarr;
+            CAPI.MXSymbolListAuxiliaryStates(Handle, &size, &sarr);
+            for (mx_uint i = 0; i < size; ++i)
+            {
+                ret.Add(Marshal.PtrToStringAnsi((IntPtr)(sarr[i])));
+            }
+            return ret;
+        }
+
+        /// <summary>
+        /// infer the shapes by providing shapes of known argument shapes.
+        /// </summary>
+        /// <param name="arg_shapes">map of argument name to shape of arguments with known shapes</param>
+        /// <param name="in_shape">used to store infered shapes of input arguments.</param>
+        /// <param name="aux_shape">used to store infered shapes of outputs.</param>
+        /// <param name="out_shape">use to store the infered shapes of auxiliary states</param>
+        public void InferShape(Dictionary<String, List<mx_uint>> arg_shapes,
+            List<List<mx_uint>> in_shape,
+            List<List<mx_uint>> aux_shape,
+            List<List<mx_uint>> out_shape
+            )
+        {
+            List<mx_uint> arg_ind_ptr = new List<mx_uint>();
+            List<mx_uint> arg_shape_data = new List<mx_uint>();
+
+            foreach (var item in arg_shapes.Values)
+            {
+                arg_ind_ptr.Add((uint)arg_shape_data.Count);
+                foreach (var i in item)
+                    arg_shape_data.Add(i);
+            }
+            arg_ind_ptr.Add((uint)arg_shape_data.Count);
+
+            using (StringListHolder keys = arg_shapes.Keys.GetHolder())
+            using (UInt32ListHolder hArgIndPtr = arg_ind_ptr.GetHolder())
+            using (UInt32ListHolder hArgShapeData = arg_shape_data.GetHolder())
+            {
+                mx_uint in_shape_size;
+                mx_uint* in_shape_ndim;
+                mx_uint** in_shape_data;
+                mx_uint out_shape_size;
+                mx_uint* out_shape_ndim;
+                mx_uint** out_shape_data;
+                mx_uint aux_shape_size;
+                mx_uint* aux_shape_ndim;
+                mx_uint** aux_shape_data;
+                int complete;
+
+                Logging.CHECK_EQ(CAPI.MXSymbolInferShape(Handle, (uint)arg_shapes.Count, keys.Pointer,
+                                            hArgIndPtr.Handle, hArgShapeData.Handle,
+                                            &in_shape_size, &in_shape_ndim, &in_shape_data,
+                                            &out_shape_size, &out_shape_ndim, &out_shape_data,
+                                            &aux_shape_size, &aux_shape_ndim, &aux_shape_data,
+                                            &complete),
+                         0);
+
+                if (complete != 0)
+                {
+                    for (mx_uint i = 0; i < in_shape_size; ++i)
+                    {
+                        in_shape.Add(new List<mx_uint>());
+                        for (mx_uint j = 0; j < in_shape_ndim[i]; ++j)
+                        {
+                            in_shape[(int)i].Add(in_shape_data[i][j]);
+                        }
+                    }
+                    for (mx_uint i = 0; i < aux_shape_size; ++i)
+                    {
+                        aux_shape.Add(new List<mx_uint>());
+                        for (mx_uint j = 0; j < aux_shape_ndim[i]; ++j)
+                        {
+                            aux_shape[(int)i].Add(aux_shape_data[i][j]);
+                        }
+                    }
+                    for (mx_uint i = 0; i < out_shape_size; ++i)
+                    {
+                        out_shape.Add(new List<mx_uint>());
+                        for (mx_uint j = 0; j < out_shape_ndim[i]; ++j)
+                        {
+                            out_shape[(int)i].Add(out_shape_data[i][j]);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// infer and construct all the arrays to bind to executor by providing some known arrays.
+        /// </summary>
+        /// <param name="context">the context of all the infered arrays</param>
+        /// <param name="arg_arrays">infered input arguments arrays.</param>
+        /// <param name="grad_arrays">infered arrays to store the gradient output of the input arguments</param>
+        /// <param name="grad_reqs"></param>
+        /// <param name="aux_arrays">infered arrays that is used as internal state in op.</param>
+        /// <param name="args_map">map of some given arguments arrays.</param>
+        /// <param name="arg_grad_store">map of some gradient given store arrays.</param>
+        /// <param name="grad_req_type">map of some given type of gradient saving. Can only be in {kNullOp, kAddTo, kWriteTo}.</param>
+        /// <param name="aux_map">NDArray that stores the internal state in op</param>
+        public void InferExecutorArrays(Context context,
+            List<NDArray> arg_arrays,
+            List<NDArray> grad_arrays,
+            List<OpReqType> grad_reqs,
+            List<NDArray> aux_arrays,
+            Dictionary<String, NDArray> args_map,
+            Dictionary<String, NDArray> arg_grad_store,
+            Dictionary<String, OpReqType> grad_req_type,
+            Dictionary<String, NDArray> aux_map)
+        {
+            List<String> arg_name_list = ListArguments();
+            List<List<mx_uint>> in_shapes = new List<List<mx_uint>>();
+            List<List<mx_uint>> aux_shapes = new List<List<mx_uint>>();
+            List<List<mx_uint>> out_shapes = new List<List<mx_uint>>();
+            Dictionary<String, List<mx_uint>> arg_shapes = new Dictionary<string, List<mx_uint>>();
+
+            foreach(String arg_name in arg_name_list)
+            {
+                if(args_map.ContainsKey(arg_name))
+                {
+                    arg_shapes[arg_name] = args_map[arg_name].GetShape();
+                }
+            }
+
+            InferShape(arg_shapes, in_shapes, aux_shapes, out_shapes);
+
+            for (int i = 0; i < in_shapes.Count; ++i)
+            {
+                var shape = in_shapes[i];
+                var arg_name = arg_name_list[i];
+                if (args_map.ContainsKey(arg_name))
+                    arg_arrays.Add(args_map[arg_name]);
+                else
+                {
+                    NDArray nd = new NDArray(shape, context, false);
+                    arg_arrays.Add(nd);
+                    NDArray.SampleGaussian(0, 1, nd);
+                }
+                
+                if(arg_grad_store.ContainsKey(arg_name))
+                    grad_arrays.Add(arg_grad_store[arg_name]);
+                else
+                    grad_arrays.Add(new NDArray(shape, context, false));
+                
+                if(grad_req_type.ContainsKey(arg_name))
+                    grad_reqs.Add(grad_req_type[arg_name]);
+                else if(arg_name.EndsWith("data"))
+                    grad_reqs.Add(OpReqType.kNullOp);
+                else
+                    grad_reqs.Add(OpReqType.kWriteTo);
+            }
+
+            var aux_name_list = ListAuxiliaryStates();
+            for (int i = 0; i < aux_shapes.Count; ++i)
+            {
+                var shape = aux_shapes[i];
+                var aux_name = aux_name_list[i];
+                if(aux_map.ContainsKey(aux_name))
+                {
+                    aux_arrays.Add(aux_map[aux_name]);
+                }
+                else
+                {
+                    NDArray nd = new NDArray(shape, context, false);
+                    aux_arrays.Add(nd);
+                    NDArray.SampleGaussian(0, 1, nd);
+                }
+            }
+        }
+
+        /// <summary>
+        /// infer and construct all the input arguments arrays to bind to 
+        /// executor by providing some known arguments arrays.
+        /// </summary>
+        /// <param name="context">the context of all the infered arrays.</param>
+        /// <param name="args_map">map of all the infered input arguments arrays.</param>
+        /// <param name="known_args">map of some given arguments arrays.</param>
+        public void InferArgsMap(Context context, 
+            Dictionary<String, NDArray> args_map, 
+            Dictionary<String, NDArray> known_args)
+        {
+            var arg_name_list = ListArguments();
+            List<List<mx_uint>> in_shapes = new List<List<mx_uint>>();
+            List<List<mx_uint>> aux_shapes = new List<List<mx_uint>>();
+            List<List<mx_uint>> out_shapes = new List<List<mx_uint>>();
+            Dictionary<String, List<mx_uint>> arg_shapes = new Dictionary<string, List<mx_uint>>();
+
+            foreach (String arg_name in arg_name_list)
+            {
+                if (args_map.ContainsKey(arg_name))
+                {
+                    arg_shapes[arg_name] = args_map[arg_name].GetShape();
+                }
+            }
+
+            InferShape(arg_shapes, in_shapes, aux_shapes, out_shapes);
+
+            for (int i = 0; i < in_shapes.Count; ++i)
+            {
+                var shape = in_shapes[i];
+                var arg_name = arg_name_list[i];
+                if(known_args.ContainsKey(arg_name))
+                {
+                    args_map[arg_name] = known_args[arg_name];
+                }
+                else
+                {
+                    NDArray nd = new NDArray(shape, context, false);
+                    NDArray.SampleGaussian(0, 1, nd);
+                    args_map[arg_name] = nd;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Create an executor by bind symbol with context and arguments.
+        /// If user do not want to compute the gradients of i-th argument,
+        /// grad_req_type[i] can be kNullOp.
+        /// The input arrays in the given maps should have the same name with the input
+        /// symbol.
+        /// Only need some of the necessary arrays, and the other arrays can be infered
+        /// automatically.
+        /// </summary>
+        /// <param name="context">the context of binding.</param>
+        /// <param name="args_map">the NDArray that stores the input arguments to the symbol.</param>
+        /// <param name="arg_grad_store">NDArray that is used to store the gradient output of the input arguments.</param>
+        /// <param name="grad_req_type">requirment type of gradient saving. Can only be in {kNullOp, kAddTo, kWriteTo}.</param>
+        /// <param name="aux_map">NDArray that stores the internal state in op </param>
+        /// <returns>a new executor, which need to be free manually.</returns>
+        public Executor SimpleBind(Context context,
+                       Dictionary<String, NDArray>  args_map,
+                       Dictionary<String, NDArray>  arg_grad_store,
+                       Dictionary<String, OpReqType> grad_req_type,
+                       Dictionary<String, NDArray> aux_map)
+        {
+            List<NDArray> arg_arrays = new List<NDArray>();
+            List<NDArray> grad_arrays = new List<NDArray>();
+            List<OpReqType> grad_reqs = new List<OpReqType>();
+            List<NDArray> aux_arrays = new List<NDArray>();
+
+            InferExecutorArrays(context, arg_arrays, grad_arrays, grad_reqs,
+                      aux_arrays, args_map, arg_grad_store, grad_req_type,
+                      aux_map);
+            
+            return new Executor(this, context, arg_arrays, grad_arrays, grad_reqs,
+                                aux_arrays, new Dictionary<string, Context>());
+        }
+
+        /// <summary>
+        /// Create an executor by bind symbol with context and arguments.
+        /// If user do not want to compute the gradients of i-th argument,
+        /// grad_req_type[i] can be kNullOp.
+        /// </summary>
+        /// <param name="context">the context of binding.</param>
+        /// <param name="arg_arrays">the NDArray that stores the input arguments to the symbol.</param>
+        /// <param name="grad_arrays">NDArray that is used to store the gradient output of the input arguments.</param>
+        /// <param name="grad_reqs">requirment type of gradient saving. Can only be in {kNullOp, kAddTo, kWriteTo}.</param>
+        /// <param name="aux_arrays">NDArray that is used as internal state in op </param>
+        /// <param name="group_to_ctx">dict of string to mx.Context</param>
+        /// <param name="shared_exec">
+        /// Executor to share memory with. This is intended for
+        /// runtime reshaping, variable length sequencesn etc.  The returned executor
+        /// shares state with shared_exec, and should not be used in parallel with it.
+        /// </param>
+        /// <returns>a new executor, which need to be free manually.</returns>
+        public Executor Bind(Context context, 
+            List<NDArray> arg_arrays,
+            List<NDArray> grad_arrays,
+            List<OpReqType> grad_reqs,
+            List<NDArray> aux_arrays,
+            Dictionary<String, Context> group_to_ctx ,
+            Executor shared_exec = null)
+        {
+            return new Executor(this, context, arg_arrays, grad_arrays, grad_reqs,
+                      aux_arrays, group_to_ctx, shared_exec);
         }
     }
 

@@ -23,6 +23,7 @@ namespace MXNetSharp
     using nn_uint = UInt32;
     using OpHandle = IntPtr;
     using GraphHandle = IntPtr;
+    using size_t = UInt64;
 
     public unsafe class CAPI
     {
@@ -83,13 +84,60 @@ namespace MXNetSharp
                               int dtype,
                               NDArrayHandle* pOut);
 
+
         /// <summary>
-        /// free the narray handle
+        /// create a NDArray handle that is loaded from raw bytes.
         /// </summary>
-        /// <param name="handle">the handle to be freed</param>
+        /// <param name="buf">the head of the raw bytes</param>
+        /// <param name="size">size of the raw bytes</param>
+        /// <param name="pOut">the returning handle</param>
         /// <returns>0 when success, -1 when failure happens</returns>
         [DllImport(MXNET_DLL)]
-        public static extern int MXNDArrayFree(NDArrayHandle handle);
+        public static extern int MXNDArrayLoadFromRawBytes(void* buf,
+                                        size_t size,
+                                        NDArrayHandle* pOut);
+
+        /// <summary>
+        /// save the NDArray into raw bytes.
+        /// </summary>
+        /// <param name="handle">the NDArray handle</param>
+        /// <param name="out_size"> size of the raw bytes</param>
+        /// <param name="out_buf">the head of returning memory bytes</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArraySaveRawBytes(NDArrayHandle handle,
+                                    size_t* out_size,
+                                    Byte** out_buf);
+
+        /// <summary>
+        /// Save list of narray into the file.
+        /// </summary>
+        /// <param name="fname">name of the file.</param>
+        /// <param name="num_args">number of arguments to save.</param>
+        /// <param name="args">the array of NDArrayHandles to be saved.</param>
+        /// <param name="keys">the name of the NDArray, optional, can be NULL</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArraySave(String fname,
+                           mx_uint num_args,
+                            NDArrayHandle* args,
+                            Byte** keys = null);
+
+        /// <summary>
+        /// Load list of narray from the file.
+        /// </summary>
+        /// <param name="fname">name of the file.</param>
+        /// <param name="out_size">number of narray loaded.</param>
+        /// <param name="out_arr">head of the returning narray handles.</param>
+        /// <param name="out_name_size">size of output name arrray.</param>
+        /// <param name="out_names">the names of returning NDArrays, can be NULL</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayLoad(String fname,
+                            mx_uint *out_size,
+                            NDArrayHandle** out_arr,
+                            mx_uint *out_name_size,
+                            byte*** out_names);
 
         /// <summary>
         /// Perform a synchronize copy from a continugous CPU memory region.
@@ -104,7 +152,139 @@ namespace MXNetSharp
         [DllImport(MXNET_DLL)]
         public static extern int MXNDArraySyncCopyFromCPU(NDArrayHandle handle,
                                        void* data,
-                                       uint size);
+                                       size_t size);
+
+        /// <summary>
+        /// Perform a synchronize copyto a continugous CPU memory region.
+        /// This function will call WaitToRead before the copy is performed.
+        /// This is useful to copy data from existing memory region that are
+        /// not wrapped by NDArray(thus dependency not being tracked).
+        /// </summary>
+        /// <param name="handle">the NDArray handle</param>
+        /// <param name="data">the data source to copy into.</param>
+        /// <param name="size">the memory size we want to copy into.</param>
+        /// <returns></returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArraySyncCopyToCPU(NDArrayHandle handle,
+                                     void* data,
+                                     size_t size);
+
+        /// <summary>
+        /// Wait until all the pending writes with respect NDArray are finished.
+        /// Always call this before read data out synchronizely.
+        /// </summary>
+        /// <param name="handle">the NDArray handle</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayWaitToRead(NDArrayHandle handle);
+
+        /// <summary>
+        /// Wait until all the pending read/write with respect NDArray are finished.
+        /// Always call this before write data into NDArray synchronizely.
+        /// </summary>
+        /// <param name="handle">the NDArray handle</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayWaitToWrite(NDArrayHandle handle);
+
+        /// <summary>
+        /// wait until all delayed operations in the system is completed
+        /// </summary>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayWaitAll();
+
+        /// <summary>
+        /// free the narray handle
+        /// </summary>
+        /// <param name="handle">the handle to be freed</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayFree(NDArrayHandle handle);
+
+        /// <summary>
+        /// Slice the NDArray along axis 0.
+        /// </summary>
+        /// <param name="handle">the handle to the NDArray</param>
+        /// <param name="slice_begin">The beginning index of slice</param>
+        /// <param name="slice_end">The ending index of slice</param>
+        /// <param name="pOut">The NDArrayHandle of sliced NDArray</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArraySlice(NDArrayHandle handle,
+                             mx_uint slice_begin,
+                             mx_uint slice_end,
+                             NDArrayHandle* pOut);
+
+        /// <summary>
+        /// Index the NDArray along axis 0.
+        /// </summary>
+        /// <param name="handle">the handle to the NDArray</param>
+        /// <param name="idx">the index</param>
+        /// <param name="pOut">The NDArrayHandle of output NDArray</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayAt(NDArrayHandle handle,
+                          mx_uint idx,
+                          NDArrayHandle* pOut);
+
+        /// <summary>
+        /// Reshape the NDArray.
+        /// </summary>
+        /// <param name="handle">the handle to the narray</param>
+        /// <param name="ndim">number of dimensions of new shape</param>
+        /// <param name="dims">new shape</param>
+        /// <param name="pOut">the NDArrayHandle of reshaped NDArray</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayReshape(NDArrayHandle handle,
+                               int ndim,
+                               int* dims,
+                               NDArrayHandle* pOut);
+
+        /// <summary>
+        /// get the shape of the array
+        /// </summary>
+        /// <param name="handle">the handle to the narray</param>
+        /// <param name="out_dim">the output dimension</param>
+        /// <param name="out_pdata">pointer holder to get data pointer of the shape</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayGetShape(NDArrayHandle handle,
+                                mx_uint* out_dim,
+                                mx_uint** out_pdata);
+
+        /// <summary>
+        /// get the content of the data in NDArray
+        /// </summary>
+        /// <param name="handle">the handle to the narray</param>
+        /// <param name="out_pdata">pointer holder to get pointer of data</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayGetData(NDArrayHandle handle,
+                               mx_float** out_pdata);
+
+        /// <summary>
+        /// get the type of the data in NDArray
+        /// </summary>
+        /// <param name="handle">the handle to the narray</param>
+        /// <param name="out_dtype">pointer holder to get type of data</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayGetDType(NDArrayHandle handle,
+                               int* out_dtype);
+
+        /// <summary>
+        /// get the context of the NDArray
+        /// </summary>
+        /// <param name="handle">the handle to the narray</param>
+        /// <param name="out_dev_type">the output device type</param>
+        /// <param name="out_dev_id">the output device id</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXNDArrayGetContext(NDArrayHandle handle,
+                                  int* out_dev_type,
+                                  int* out_dev_id);
 
         /// <summary>
         /// invoke a nnvm op and imperative function
