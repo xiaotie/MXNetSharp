@@ -10,5 +10,10 @@ namespace MXNetSharp
         public static void CHECK_EQ(int v1, int v2)
         {
         }
+
+        public static void LOG_FATAL(String msg)
+        {
+
+        }
     }
 }

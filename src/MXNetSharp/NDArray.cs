@@ -51,6 +51,12 @@ namespace MXNetSharp
             _handle = (Byte*)Marshal.StringToHGlobalAnsi(str);
         }
 
+        public StringHolder(byte* chars)
+        {
+            String = Marshal.PtrToStringAnsi((IntPtr)chars);
+            _handle = null;
+        }
+
         ~StringHolder()
         {
             Dispose();
@@ -66,11 +72,102 @@ namespace MXNetSharp
         }
     }
 
+    public unsafe class IntPtrListHolder : IDisposable
+    {
+        private IntPtr* _handle;
+        public IntPtr* Handle
+        {
+            get
+            {
+                return _handle;
+            }
+        }
+
+        public IntPtrListHolder(IList<IntPtr> list)
+        {
+            _handle = (IntPtr*)Marshal.AllocHGlobal(sizeof(IntPtr) * list.Count);
+            for (int i = 0; i < list.Count; i++)
+                _handle[i] = list[i];
+        }
+
+        ~IntPtrListHolder()
+        {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_handle != null)
+            {
+                Marshal.FreeHGlobal((IntPtr)_handle);
+                _handle = null;
+            }
+        }
+    }
+
+    public unsafe class StringListHolder : IDisposable
+    {
+        private IList<String> _list;
+        private List<StringHolder> _hList;
+
+        private Byte** _pointer;
+
+        public Byte** Pointer
+        {
+            get { return _pointer; }
+        }
+
+        public StringListHolder(IList<String> list)
+        {
+            _list = list;
+            _hList = new List<StringHolder>(list.Count);
+            foreach (String item in list)
+                _hList.Add(new StringHolder(item));
+
+            _pointer = (Byte**)Marshal.AllocHGlobal(sizeof(IntPtr) * list.Count);
+            for(int i = 0; i < list.Count; i++)
+            {
+                StringHolder h = new StringHolder(list[i]);
+                _hList.Add(h);
+                _pointer[i] = h.Handle;
+            }
+        }
+
+        ~StringListHolder()
+        {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_pointer == null) return;
+
+            Marshal.FreeHGlobal((IntPtr)_pointer);
+            _pointer = null;
+
+            if(_hList != null)
+            {
+                foreach (var item in _hList)
+                    item.Dispose();
+
+                _hList = null;
+            }
+        }
+    }
+
     public static class ClassHelper
     {
         public static NDArrayHandle[] GetHandles(this List<NDArray> list)
         {
             NDArrayHandle[] handles = new NDArrayHandle[list.Count];
+            for (int i = 0; i < list.Count; i++)
+                handles[i] = list[i].Handle;
+            return handles;
+        }
+
+        public static SymbolHandle[] GetHandles(this List<Symbol> list)
+        {
+            SymbolHandle[] handles = new SymbolHandle[list.Count];
             for (int i = 0; i < list.Count; i++)
                 handles[i] = list[i].Handle;
             return handles;
@@ -82,6 +179,23 @@ namespace MXNetSharp
             for (int i = 0; i < list.Count; i++)
                 data[i] = (mx_uint)list[i];
             return data;
+        }
+
+        public static StringListHolder GetHolder(this IList<String> list)
+        {
+            return new StringListHolder(list);
+        }
+
+        public static StringListHolder GetHolder(this IEnumerable<String> collection)
+        {
+            List<String> list = new List<string>();
+            list.AddRange(collection);
+            return new StringListHolder(list);
+        }
+
+        public static IntPtrListHolder GetHolder(this IList<IntPtr> list)
+        {
+            return new IntPtrListHolder(list);
         }
     }
 
@@ -438,8 +552,8 @@ namespace MXNetSharp
     /// </summary>
     public unsafe class OpMap
     {
-        Dictionary<String, AtomicSymbolCreator> symbol_creators_ = new Dictionary<string, NDArrayHandle>();
-        Dictionary<String, OpHandle> op_handles_ = new Dictionary<string, NDArrayHandle>();
+        Dictionary<String, AtomicSymbolCreator> symbol_creators_ = new Dictionary<String, AtomicSymbolCreator>();
+        Dictionary<String, OpHandle> op_handles_ = new Dictionary<string, OpHandle>();
 
         public OpMap()
         {
@@ -491,10 +605,291 @@ namespace MXNetSharp
             }
             return sb.ToString();
         }
+
+        public OpHandle GetOpHandle(String name)
+        {
+            return op_handles_[name];
+        }
+
+        public AtomicSymbolCreator GetSymbolCreator(String name)
+        {
+            if(symbol_creators_.ContainsKey(name) ==false)
+                return GetOpHandle(name);
+            return symbol_creators_[name];
+        }
     }
 
-    public class Operator
+    /// <summary>
+    /// Operator interface
+    /// </summary>
+    public unsafe class Operator
     {
+        private static OpMap op_map_ = new OpMap();
+
+        Dictionary<String, String> params_desc_ = new Dictionary<string, string>();
+        bool variable_params_ = false;
+        Dictionary<String, String> params_ = new Dictionary<string, string>();
+        List<SymbolHandle> input_symbols = new List<SymbolHandle>();
+        List<NDArrayHandle> input_ndarrays = new List<NDArrayHandle>();
+        List<String> input_keys = new List<String>();
+        List<String> arg_names_ = new List<String>();
+        AtomicSymbolCreator handle_;
+
+        public Operator SetParam(int pos, NDArray val)
+        {
+            input_ndarrays.Add(val.Handle);
+            return this;
+        }
+
+        public Operator SetParam(int pos, Symbol val)
+        {
+            input_symbols.Add(val.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// set config parameters
+        /// </summary>
+        /// <param name="name">name of the config parameter</param>
+        /// <param name="val">value of the config parameter</param>
+        /// <returns>reference of self</returns>
+        public Operator SetParam(String name, Object val)
+        {
+            params_[name] = val.ToString();
+            return this;
+        }
+
+        /// <summary>
+        /// set config parameters from positional inputs
+        /// </summary>
+        /// <param name="pos">the position of parameter</param>
+        /// <param name="val">value of the config parameter</param>
+        /// <returns>reference of self</returns>
+        public Operator SetParam(int pos, Object val)
+        {
+            params_[arg_names_[pos]] = val.ToString();
+            return this;
+        }
+
+        /// <summary>
+        /// add an input symbol
+        /// </summary>
+        /// <param name="name">name of the input symbol</param>
+        /// <param name="symbol">the input symbol</param>
+        /// <returns>reference of self</returns>
+        public Operator SetInput(String name, Symbol symbol)
+        {
+            input_keys.Add(name);
+            input_symbols.Add(symbol.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add an input symbol
+        /// </summary>
+        /// <param name="symbol">the input symbol</param>
+        public void PushInput(Symbol symbol)
+        {
+            input_symbols.Add(symbol.Handle);
+        }
+
+        /// <summary>
+        /// add input symbols
+        /// </summary>
+        /// <param name="symbol">the input symbol</param>
+        /// <returns>reference of self</returns>
+        public Operator Add(Symbol symbol)
+        {
+            input_symbols.Add(symbol.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add a list of input symbols
+        /// </summary>
+        /// <param name="symbols">the vector of the input symbols</param>
+        /// <returns>reference of self</returns>
+        public Operator AddRange(List<Symbol> symbols)
+        {
+            foreach(Symbol item in symbols)
+                input_symbols.Add(item.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add an input ndarray
+        /// </summary>
+        /// <param name="name">name of the input ndarray</param>
+        /// <param name="ndarray">the input ndarray</param>
+        /// <returns>reference of self</returns>
+        public Operator SetInput(String name, NDArray ndarray)
+        {
+            input_keys.Add(name);
+            input_ndarrays.Add(ndarray.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add an input ndarray
+        /// </summary>
+        /// <param name="ndarray">the input ndarray</param>
+        public void PushInput(NDArray ndarray)
+        {
+            input_ndarrays.Add(ndarray.Handle);
+        }
+
+        /// <summary>
+        /// add input ndarrays
+        /// </summary>
+        /// <param name="ndarray">the input ndarray</param>
+        /// <returns>reference of self</returns>
+        public Operator Add(NDArray ndarray)
+        {
+            input_ndarrays.Add(ndarray.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add a list of input ndarrays
+        /// </summary>
+        /// <param name="ndarrays">the vector of the input ndarrays</param>
+        /// <returns>reference of self</returns>
+        public Operator AddRange(List<NDArray> ndarrays)
+        {
+            foreach (NDArray item in ndarrays)
+                input_ndarrays.Add(item.Handle);
+            return this;
+        }
+
+        /// <summary>
+        /// add positional inputs
+        /// </summary>
+        /// <param name="args"></param>
+        public void PushInput(params Object[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+                SetParam(i, args[i]);
+        }
+
+        public Operator AddRange(params Object[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+                SetParam(i, args[i]);
+            return this;
+        }
+
+        /// <summary>
+        /// Operator constructor
+        /// </summary>
+        /// <param name="name">type of the operator</param>
+        public Operator(String operatorName)
+        {
+            handle_ = op_map_.GetSymbolCreator(operatorName);
+            Byte* name;
+            Byte* description;
+            mx_uint num_args;
+            Byte** arg_names;
+            Byte** arg_type_infos;
+            Byte** arg_descriptions;
+            Byte* key_var_num_args;
+            CAPI.MXSymbolGetAtomicSymbolInfo(handle_,
+                &name,
+                &description,
+                &num_args,
+                &arg_names,
+                &arg_type_infos,
+                &arg_descriptions,
+                &key_var_num_args);
+            for (mx_uint i = 0; i < num_args; ++i)
+            {
+                byte* pArgName = arg_names[i];
+                arg_names_.Add(Marshal.PtrToStringAnsi((IntPtr)pArgName));
+            }
+        }
+
+        /// <summary>
+        /// create a Symbol from the current operator
+        /// </summary>
+        /// <param name="name">the name of the operator</param>
+        /// <returns>the operator Symbol</returns>
+        public Symbol CreateSymbol(String name = "")
+        {
+            if (input_keys.Count > 0)
+            {
+                Logging.CHECK_EQ(input_keys.Count, input_symbols.Count);
+            }
+
+            using (StringHolder hName = new StringHolder(name))
+            using (StringListHolder hInputKeys = input_keys.GetHolder())
+            using (StringListHolder hParamKeys = params_.Keys.GetHolder())
+            using (StringListHolder hParamValues = params_.Values.GetHolder())
+            using (IntPtrListHolder hInputSymbols = input_symbols.GetHolder())
+            {
+                byte* pName = hName.Handle;
+                if (String.IsNullOrEmpty(name)) pName = null;
+
+                SymbolHandle symbol_handle = new SymbolHandle();
+                byte** pInputKeys = input_keys.Count > 0 ? hInputKeys.Pointer : null;
+
+                CAPI.MXSymbolCreateAtomicSymbol(handle_, (uint)params_.Count, hParamKeys.Pointer,
+                                       hParamValues.Pointer, &symbol_handle);
+                CAPI.MXSymbolCompose(symbol_handle, pName, (uint)input_symbols.Count, hInputKeys.Pointer,
+                                hInputSymbols.Handle);
+                return new Symbol(symbol_handle);
+            }
+        }
+
+        public void Invoke(List<NDArray> outputs)
+        {
+            if (input_keys.Count > 0)
+            {
+                Logging.CHECK_EQ(input_keys.Count, input_ndarrays.Count);
+            }
+
+            using (StringListHolder hInputKeys = input_keys.GetHolder())
+            using (StringListHolder hParamKeys = params_.Keys.GetHolder())
+            using (StringListHolder hParamValues = params_.Values.GetHolder())
+            using (IntPtrListHolder hInputNDArrays = input_ndarrays.GetHolder())
+            {
+                int num_inputs = input_ndarrays.Count;
+                int num_outputs = outputs.Count;
+                NDArrayHandle[] output_handles = outputs.GetHandles();
+                fixed (NDArrayHandle* pOutputs = output_handles)
+                {
+                    NDArrayHandle* pOutputsReceiver = null;
+                    if (num_outputs > 0)
+                    {
+                        pOutputsReceiver = pOutputs;
+                    }
+
+                    CAPI.MXImperativeInvoke(handle_, num_inputs, hInputNDArrays.Handle,
+                        &num_outputs, &pOutputsReceiver,
+                        params_.Count, hParamKeys.Pointer, hParamValues.Pointer);
+
+                    if (outputs.Count > 0)
+                        return;
+
+                    for(int i = 0; i < num_outputs; i++)
+                    {
+                        outputs.Add(new NDArray(pOutputsReceiver[i]));
+                    }
+                }
+            }
+        }
+
+        public List<NDArray> Invoke()
+        {
+            List<NDArray> outputs = new List<NDArray>();
+            Invoke(outputs);
+            return outputs;
+        }
+
+        public void Invoke(NDArray output)
+        {
+            List<NDArray> outputs = new List<NDArray>();
+            outputs.Add(output);
+            Invoke(outputs);
+        }
     }
 
     #region Executor
@@ -766,11 +1161,115 @@ namespace MXNetSharp
         #endregion
     }
 
-    public class Symbol
+    public unsafe class Symbol
     {
+        private static OpMap _opMap = new OpMap();
+
+        private SymBlob blob_ptr_;
+
         public SymbolHandle Handle
         {
-            get { throw new NotImplementedException(); }
+            get { return blob_ptr_.Handle;  }
+        }
+
+        /// <summary>
+        /// construct a Symbol with SymbolHandle
+        /// </summary>
+        /// <param name="handle">the given SymbolHandle</param>
+        public Symbol(SymbolHandle handle)
+        {
+            blob_ptr_ = new SymBlob(handle);
+        }
+
+        /// <summary>
+        /// construct a variable Symbol
+        /// </summary>
+        /// <param name="name">the name of the variable</param>
+        public Symbol(String name)
+        {
+            SymbolHandle handle = new NDArrayHandle();
+            StringHolder hName = new StringHolder(name);
+            Logging.CHECK_EQ(CAPI.MXSymbolCreateVariable(hName.Handle, &(handle)), 0);
+            blob_ptr_ = new SymBlob(handle);
+        }
+
+        public static Symbol operator +(Symbol lhs, Symbol rhs)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator -(Symbol lhs, Symbol rhs)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator *(Symbol lhs, Symbol rhs)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator /(Symbol lhs, Symbol rhs)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator +(Symbol lhs, mx_float scalar)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator -(Symbol lhs, mx_float scalar)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator *(Symbol lhs, mx_float scalar)
+        {
+            throw new NotImplementedException();
+        }
+
+        public static Symbol operator /(Symbol lhs, mx_float scalar)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Symbol this[int index]
+        {
+            get {
+                SymbolHandle hOut = new NDArrayHandle();
+                CAPI.MXSymbolGetOutput(Handle, (uint)index, &hOut);
+                return new Symbol(hOut);
+            }
+        }
+
+        public Symbol this[String name]
+        {
+            get {
+                var list = ListOutputs();
+                for(int i = 0; i < list.Count; i++)
+                {
+                    if (list[i] == name) return this[i];
+                }
+
+                Logging.LOG_FATAL("Cannot find output that matches name " + name);
+                return this[0];
+            }
+        }
+
+        public static Symbol Group(List<Symbol> symbols)
+        {
+            SymbolHandle pOut = new SymbolHandle();
+            SymbolHandle[] handles = symbols.GetHandles();
+            fixed(SymbolHandle* p = handles)
+            {
+                CAPI.MXSymbolCreateGroup((uint)symbols.Count, p, &pOut);
+            }
+            return new Symbol(pOut);
+        }
+
+        public static Symbol Variable(String name)
+        {
+            return new Symbol(name);
         }
 
         /// <summary>

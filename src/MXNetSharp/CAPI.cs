@@ -33,6 +33,8 @@ namespace MXNetSharp
         [DllImport(MXNET_DLL)]
         public static extern String MXGetLastError();
 
+        #region NDArray
+
         /* Part 1: NDArray creation and deletion */
 
         /// <summary>
@@ -59,7 +61,7 @@ namespace MXNetSharp
                               int dev_type,
                               int dev_id,
                               int delay_alloc,
-                              NDArrayHandle *pOut);
+                              NDArrayHandle* pOut);
 
         /// <summary>
         /// create a NDArray with specified shape and data type
@@ -79,7 +81,7 @@ namespace MXNetSharp
                               int dev_id,
                               int delay_alloc,
                               int dtype,
-                              NDArrayHandle *pOut);
+                              NDArrayHandle* pOut);
 
         /// <summary>
         /// free the narray handle
@@ -103,6 +105,30 @@ namespace MXNetSharp
         public static extern int MXNDArraySyncCopyFromCPU(NDArrayHandle handle,
                                        void* data,
                                        uint size);
+
+        /// <summary>
+        /// invoke a nnvm op and imperative function
+        /// </summary>
+        /// <param name="creator">the op</param>
+        /// <param name="num_inputs">number of input NDArrays</param>
+        /// <param name="inputs">input NDArrays</param>
+        /// <param name="num_outputs">number of output NDArrays</param>
+        /// <param name="outputs">output NDArrays</param>
+        /// <param name="num_params">number of keyword parameters</param>
+        /// <param name="param_keys">keys for keyword parameters</param>
+        /// <param name="param_vals">values for keyword parameters</param>
+        /// <returns>0 when success, -1 when failure happens</returns>
+        [DllImport(MXNET_DLL)]
+        public static extern int MXImperativeInvoke(AtomicSymbolCreator creator,
+                                 int num_inputs,
+                                 NDArrayHandle* inputs,
+                                 int* num_outputs,
+                                 NDArrayHandle** outputs,
+                                 int num_params,
+                                 byte** param_keys,
+                                 byte** param_vals);
+
+        #endregion
 
         #region symbolic configuration generation
 
