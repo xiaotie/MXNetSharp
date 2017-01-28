@@ -26,6 +26,86 @@ namespace MXNetSharp
     using OpHandle = IntPtr;
     using GraphHandle = IntPtr;
 
+    public enum DeviceType
+    {
+        kCPU = 1,
+        kGPU = 2,
+        kCPUPinned = 3
+    }
+
+    public enum ConvolutionCudnnTune
+    {
+        None = 0,
+        fastest = 1,
+        limited_workspace = 2,
+        off = 3
+    };
+
+    /// <summary>
+    /// Set layout for input, output and weight. Empty for default layout: NCHW for 2d and NCDHW for 3d.
+    /// </summary>
+    public enum ConvolutionLayout
+    {
+        None = 0,
+        NCDHW = 1,
+        NCHW = 2,
+        NDHWC = 3,
+        NHWC = 4
+    };
+
+    /// <summary>
+    /// Activation function to be applied.
+    /// </summary>
+    public enum ActivationActType
+    {
+        relu = 0,
+        sigmoid = 1,
+        softrelu = 2,
+        tanh = 3
+    };
+
+    /// <summary>
+    /// Pooling type to be applied.
+    /// </summary>
+    public enum PoolingPoolType
+    {
+        avg = 0,
+        max = 1,
+        sum = 2
+    };
+
+    /// <summary>
+    /// Pooling convention to be applied.kValid is default setting of Mxnet
+    /// and rounds down the output pooling size.kFull is compatible with
+    /// </summary>
+    public enum PoolingPoolingConvention
+    {
+        full = 0,
+        valid = 1
+    };
+
+    /// <summary>
+    /// Softmax Mode. If set to instance, this operator will compute a
+    /// softmax for each instance in the batch; this is the default mode. If
+    /// set to channel, this operator will compute a num_channel-class
+    /// softmax at each position of each instance; this can be used for
+    /// </summary>
+    public enum SoftmaxActivationMode
+    {
+        channel = 0,
+        instance = 1
+    };
+
+    /// <summary>
+    /// If set to null, op will do nothing on output gradient.If set to
+    /// batch, op will normalize gradient by divide batch sizeIf set to
+    /// </summary>
+    public enum SoftmaxOutputNormalization
+    {
+        batch = 0,
+        none = 1,
+        valid = 2
+    };
 
     #region utils classes
 
@@ -359,13 +439,6 @@ namespace MXNetSharp
             return sb.ToString();
         }
     };
-
-    public enum DeviceType
-    {
-        kCPU = 1,
-        kGPU = 2,
-        kCPUPinned = 3
-    }
 
     /// <summary>
     /// Context interface
@@ -1325,6 +1398,7 @@ namespace MXNetSharp
 
         #endregion
 
+        #region symbols
 
         public static Symbol _Plus(Symbol lhs, Symbol rhs)
         {
@@ -1457,15 +1531,386 @@ namespace MXNetSharp
                 .CreateSymbol();
         }
 
+        private static String[] ConvolutionCudnnTuneValues = {
+            "None",
+            "fastest",
+            "limited_workspace",
+            "off"
+          };
+
+        private static String[] ConvolutionLayoutValues = {
+            "None",
+            "NCDHW",
+            "NCHW",
+            "NDHWC",
+            "NHWC"
+          };
+
         /// <summary>
-        /// Apply activation function to input.
-        /// Softmax Activation is only available with CUDNN on GPUand will be
-        /// computed at each location across channel if input is 4D.
+        /// Apply convolution to input then add a bias.
         /// </summary>
-        /// <param name="symbol_name">name of the resulting symbol.</param>
-        /// <param name="data">Input data to activation function.</param>
-        /// <param name="act_type">Activation function to be applied. </param>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to the ConvolutionOp.</param>
+        /// <param name="weight">Weight matrix.</param>
+        /// <param name="bias">Bias parameter.</param>
+        /// <param name="kernel">convolution kernel size: (h, w) or (d, h, w)</param>
+        /// <param name="num_filter">convolution filter(channel) number</param>
+        /// <param name="stride">convolution stride: (h, w) or (d, h, w)</param>
+        /// <param name="dilate">convolution dilate: (h, w) or (d, h, w)</param>
+        /// <param name="pad">pad for convolution: (h, w) or (d, h, w)</param>
+        /// <param name="num_group">
+        /// Number of group partitions. Equivalent to slicing input
+        /// partitions, apply convolution on each, then concatenate the results
+        /// </param>
+        /// <param name="workspace">Maximum tmp workspace allowed for convolution (MB).</param>
+        /// <param name="no_bias">Whether to disable bias parameter.</param>
+        /// <param name="cudnn_tune">
+        /// Whether to pick convolution algo by running performance
+        /// Leads to higher startup time but may give faster speed. Options are:
+        /// 'off': no tuning
+        /// 'limited_workspace': run test and pick the fastest algorithm that
+        /// 'fastest': pick the fastest algorithm and ignore workspace limit.
+        /// If set to None (default), behavior is determined by environment
+        /// variable MXNET_CUDNN_AUTOTUNE_DEFAULT: 0 for off,
+        /// 1 for limited workspace (default), 2 for fastest.
+        /// </param>
+        /// <param name="cudnn_off">Turn off cudnn for this layer.</param>
+        /// <param name="layout">
+        /// Set layout for input, output and weight. Empty for
+        /// default layout: NCHW for 2d and NCDHW for 3d.
+        /// </param>
         /// <returns>new symbol</returns>
+        public static Symbol Convolution(String symbol_name,
+                          Symbol data,
+                          Symbol weight,
+                          Symbol bias,
+                          Shape kernel,
+                          int num_filter,
+                          Shape stride,
+                          Shape dilate,
+                          Shape pad,
+                          int num_group = 1,
+                          Int64 workspace = 1024,
+                          bool no_bias = false,
+                          ConvolutionCudnnTune cudnn_tune = ConvolutionCudnnTune.None,
+                          bool cudnn_off = false,
+                          ConvolutionLayout layout = ConvolutionLayout.None)
+        {
+            return new Operator("Convolution")
+                     .SetParam("kernel", kernel)
+                     .SetParam("num_filter", num_filter)
+                     .SetParam("stride", stride)
+                     .SetParam("dilate", dilate)
+                     .SetParam("pad", pad)
+                     .SetParam("num_group", num_group)
+                     .SetParam("workspace", workspace)
+                     .SetParam("no_bias", no_bias)
+                     .SetParam("cudnn_tune", ConvolutionCudnnTuneValues[(int)(cudnn_tune)])
+                     .SetParam("cudnn_off", cudnn_off)
+                     .SetParam("layout", ConvolutionLayoutValues[(int)(layout)])
+                     .SetInput("data", data)
+                     .SetInput("weight", weight)
+                     .SetInput("bias", bias)
+                     .CreateSymbol(symbol_name);
+        }
+
+        public static Symbol Convolution(String symbol_name,
+                  Symbol data,
+                  Symbol weight,
+                  Symbol bias,
+                  Shape kernel,
+                  int num_filter)
+        {
+            return Convolution(symbol_name, data, weight, bias, kernel, num_filter, new Shape(), new Shape(), new Shape());
+        }
+
+        private static String[] PoolingPoolTypeValues = {
+            "avg",
+            "max",
+            "sum"
+          };
+
+        private static String[] PoolingPoolingConventionValues =  {
+            "full",
+            "valid"
+          };
+
+        /// <summary>
+        /// Perform spatial pooling on inputs.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to the pooling operator.</param>
+        /// <param name="kernel">pooling kernel size: (y, x) or (d, y, x)</param>
+        /// <param name="pool_type">Pooling type to be applied.</param>
+        /// <param name="global_pool">Ignore kernel size, do global pooling based on current</param>
+        /// <param name="pooling_convention">
+        /// Pooling convention to be applied.kValid is default
+        /// setting of Mxnet and rounds down the output pooling size.kFull is
+        /// </param>
+        /// <param name="stride">stride: for pooling (y, x) or (d, y, x)</param>
+        /// <param name="pad">pad for pooling: (y, x) or (d, y, x)</param>
+        /// <returns>new symbol</returns>
+        public static Symbol Pooling(String symbol_name,
+                      Symbol data,
+                      Shape kernel,
+                      PoolingPoolType pool_type,
+                      bool global_pool,
+                      PoolingPoolingConvention pooling_convention,
+                      Shape stride,
+                      Shape pad)
+        {
+            return new Operator("Pooling")
+           .SetParam("kernel", kernel)
+           .SetParam("pool_type", PoolingPoolTypeValues[(int)(pool_type)])
+           .SetParam("global_pool", global_pool)
+           .SetParam("pooling_convention", PoolingPoolingConventionValues[(int)(pooling_convention)])
+           .SetParam("stride", stride)
+           .SetParam("pad", pad)
+           .SetInput("data", data)
+           .CreateSymbol(symbol_name);
+        }
+
+        public static Symbol Pooling(String symbol_name,
+                      Symbol data,
+                      Shape kernel,
+                      PoolingPoolType pool_type,
+                      bool global_pool = false,
+                      PoolingPoolingConvention pooling_convention = PoolingPoolingConvention.valid)
+        {
+            return Pooling(symbol_name, data, kernel, pool_type, global_pool, pooling_convention, new Shape(1, 1), new Shape(0, 0));
+        }
+
+        /// <summary>
+        /// Flatten input into 2D by collapsing all the higher dimensions.
+        /// A (d1, d2, ..., dK) tensor is flatten to (d1, d2* ... *dK) matrix.
+        /// </summary>
+        /// <param name="data">Input data to reshape.</param>
+        /// <returns>new symbol</returns>
+        public static Symbol Flatten(Symbol data)
+        {
+            return new Operator("Flatten")
+                     .SetInput("data", data)
+                     .CreateSymbol();
+        }
+
+        /// <summary>
+        /// Flatten input into 2D by collapsing all the higher dimensions.
+        /// A (d1, d2, ..., dK) tensor is flatten to (d1, d2* ... *dK) matrix.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to reshape.</param>
+        /// <returns>new symbol</returns>
+        public static Symbol Flatten(String symbol_name, Symbol data)
+        {
+            return new Operator("Flatten")
+               .SetInput("data", data)
+               .CreateSymbol(symbol_name);
+        }
+
+        /// <summary>
+        ///  Apply matrix multiplication to input then add a bias.
+        ///  It maps the input of shape `(batch_size, input_dim)` to the shape of
+        ///  `(batch_size, num_hidden)`. Learnable parameters include the weights
+        ///  of the linear transform and an optional bias vector.
+        /// </summary>
+        /// <param name="data">Input data to the FullyConnectedOp.</param>
+        /// <param name="weight">Weight matrix.</param>
+        /// <param name="bias">Bias parameter.</param>
+        /// <param name="num_hidden">Number of hidden nodes of the output.</param>
+        /// <param name="no_bias">Whether to disable bias parameter.</param>
+        /// <returns>new symbol</returns>
+        public static Symbol FullyConnected(Symbol data,
+                             Symbol weight,
+                             Symbol bias,
+                             int num_hidden,
+                             bool no_bias = false)
+        {
+            return new Operator("FullyConnected")
+                     .SetParam("num_hidden", num_hidden)
+                     .SetParam("no_bias", no_bias)
+                     .SetInput("data", data)
+                     .SetInput("weight", weight)
+                     .SetInput("bias", bias)
+                     .CreateSymbol();
+        }
+
+        /// <summary>
+        ///  Apply matrix multiplication to input then add a bias.
+        ///  It maps the input of shape `(batch_size, input_dim)` to the shape of
+        ///  `(batch_size, num_hidden)`. Learnable parameters include the weights
+        ///  of the linear transform and an optional bias vector.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to the FullyConnectedOp.</param>
+        /// <param name="weight">Weight matrix.</param>
+        /// <param name="bias">Bias parameter.</param>
+        /// <param name="num_hidden">Number of hidden nodes of the output.</param>
+        /// <param name="no_bias">Whether to disable bias parameter.</param>
+        /// <returns>new symbol</returns>
+        public static Symbol FullyConnected(
+                                 String symbol_name,
+                                 Symbol data,
+                                 Symbol weight,
+                                 Symbol bias,
+                                 int num_hidden,
+                                 bool no_bias = false)
+        {
+            return new Operator("FullyConnected")
+              .SetParam("num_hidden", num_hidden)
+              .SetParam("no_bias", no_bias)
+              .SetInput("data", data)
+              .SetInput("weight", weight)
+              .SetInput("bias", bias)
+              .CreateSymbol(symbol_name);
+        }
+
+        private static String[] SoftmaxActivationModeValues = {
+            "channel",
+            "instance"
+          };
+
+        /// <summary>
+        /// Apply softmax activation to input. This is intended for internal
+        /// layers. For output (loss layer) please use SoftmaxOutput. If
+        /// mode=instance, this operator will compute a softmax for each
+        /// instance in the batch; this is the default mode. If mode=channel,
+        /// this operator will compute a num_channel-class softmax at each
+        /// position of each instance; this can be used for fully convolutional
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to activation function.</param>
+        /// <param name="mode">
+        /// Softmax Mode. If set to instance, this operator will compute a
+        /// softmax for each instance in the batch; this is the default mode. If
+        /// set to channel, this operator will compute a num_channel-class
+        /// softmax at each position of each instance; this can be used for
+        /// </param>
+        /// <returns>new symbol</returns>
+        public static Symbol SoftmaxActivation(String symbol_name,
+                                Symbol data,
+                                SoftmaxActivationMode mode = SoftmaxActivationMode.instance)
+        {
+            return new Operator("SoftmaxActivation")
+              .SetParam("mode", SoftmaxActivationModeValues[(int)(mode)])
+              .SetInput("data", data)
+              .CreateSymbol(symbol_name);
+        }
+
+        private static String[] SoftmaxOutputNormalizationValues = {
+            "batch",
+            "null",
+            "valid"
+          };
+
+        /// <summary>
+        /// Perform a softmax transformation on input, backprop with logloss.
+        /// </summary>
+        /// <param name="data">Input data to softmax.</param>
+        /// <param name="label">Label data, can also be probability value with same shape as</param>
+        /// <param name="grad_scale">Scale the gradient by a float factor</param>
+        /// <param name="ignore_label">the label value will be ignored during backward</param>
+        /// <param name="multi_output">
+        /// If set to true, for a (n,k,x_1,..,x_n) dimensional input
+        ///  tensor, softmax will generate n*x_1*...*x_n output, each has k
+        /// </param>
+        /// <param name="use_ignore">
+        /// If set to true, the ignore_label value will not contribute
+        /// </param>
+        /// <param name="preserve_shape">
+        /// If true, for a (n_1, n_2, ..., n_d, k) dimensional
+        /// input tensor, softmax will generate (n1, n2, ..., n_d, k) output,
+        /// </param>
+        /// <param name="normalization">
+        /// If set to null, op will do nothing on output
+        /// gradient.If set to batch, op will normalize gradient by divide batch
+        /// sizeIf set to valid, op will normalize gradient by divide sample not
+        /// </param>
+        /// <param name="out_grad">Apply weighting from output gradient</param>
+        /// <returns>new symbol</returns>
+        public static Symbol SoftmaxOutput(Symbol data,
+                            Symbol label,
+                            mx_float grad_scale = 1,
+                            mx_float ignore_label = -1,
+                            bool multi_output = false,
+                            bool use_ignore = false,
+                            bool preserve_shape = false,
+                            SoftmaxOutputNormalization normalization = SoftmaxOutputNormalization.none,
+                            bool out_grad = false)
+        {
+            return new Operator("SoftmaxOutput")
+               .SetParam("grad_scale", grad_scale)
+               .SetParam("ignore_label", ignore_label)
+               .SetParam("multi_output", multi_output)
+               .SetParam("use_ignore", use_ignore)
+               .SetParam("preserve_shape", preserve_shape)
+               .SetParam("normalization", SoftmaxOutputNormalizationValues[(int)(normalization)])
+               .SetParam("out_grad", out_grad)
+               .SetInput("data", data)
+               .SetInput("label", label)
+               .CreateSymbol();
+        }
+
+        /// <summary>
+        /// Perform a softmax transformation on input, backprop with logloss.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol</param>
+        /// <param name="data">Input data to softmax.</param>
+        /// <param name="label">Label data, can also be probability value with same shape as</param>
+        /// <param name="grad_scale">Scale the gradient by a float factor</param>
+        /// <param name="ignore_label">the label value will be ignored during backward</param>
+        /// <param name="multi_output">
+        /// If set to true, for a (n,k,x_1,..,x_n) dimensional input
+        ///  tensor, softmax will generate n*x_1*...*x_n output, each has k
+        /// </param>
+        /// <param name="use_ignore">
+        /// If set to true, the ignore_label value will not contribute
+        /// </param>
+        /// <param name="preserve_shape">
+        /// If true, for a (n_1, n_2, ..., n_d, k) dimensional
+        /// input tensor, softmax will generate (n1, n2, ..., n_d, k) output,
+        /// </param>
+        /// <param name="normalization">
+        /// If set to null, op will do nothing on output
+        /// gradient.If set to batch, op will normalize gradient by divide batch
+        /// sizeIf set to valid, op will normalize gradient by divide sample not
+        /// </param>
+        /// <param name="out_grad">Apply weighting from output gradient</param>
+        /// <returns>new symbol</returns>
+        public static Symbol SoftmaxOutput(String symbol_name,
+                           Symbol data,
+                           Symbol label,
+                           mx_float grad_scale = 1,
+                           mx_float ignore_label = -1,
+                           bool multi_output = false,
+                           bool use_ignore = false,
+                           bool preserve_shape = false,
+                           SoftmaxOutputNormalization normalization = SoftmaxOutputNormalization.none,
+                           bool out_grad = false)
+        {
+            return new Operator("SoftmaxOutput")
+               .SetParam("grad_scale", grad_scale)
+               .SetParam("ignore_label", ignore_label)
+               .SetParam("multi_output", multi_output)
+               .SetParam("use_ignore", use_ignore)
+               .SetParam("preserve_shape", preserve_shape)
+               .SetParam("normalization", SoftmaxOutputNormalizationValues[(int)(normalization)])
+               .SetParam("out_grad", out_grad)
+               .SetInput("data", data)
+               .SetInput("label", label)
+               .CreateSymbol(symbol_name);
+        }
+
+        #endregion
+
+            /// <summary>
+            /// Apply activation function to input.
+            /// Softmax Activation is only available with CUDNN on GPUand will be
+            /// computed at each location across channel if input is 4D.
+            /// </summary>
+            /// <param name="symbol_name">name of the resulting symbol.</param>
+            /// <param name="data">Input data to activation function.</param>
+            /// <param name="act_type">Activation function to be applied. </param>
+            /// <returns>new symbol</returns>
         public static Symbol Activation(String symbol_name,
                          Symbol data,
                          String act_type)
@@ -1478,6 +1923,13 @@ namespace MXNetSharp
                      .SetParam("act_type", act_type)
                      .SetInput("data", data)
                      .CreateSymbol(symbol_name);
+        }
+
+        public static Symbol Activation(String symbol_name,
+                        Symbol data,
+                        ActivationActType type)
+        {
+            return Activation(symbol_name, data, type.ToString());
         }
 
         public Symbol this[int index]
@@ -1559,6 +2011,11 @@ namespace MXNetSharp
             return new Symbol(handle);
         }
 
+        /// <summary>
+        /// construct a variable Symbol
+        /// </summary>
+        /// <param name="name">the name of the variable</param>
+        /// <returns></returns>
         public static Symbol Variable(String name)
         {
             return new Symbol(name);
@@ -1728,9 +2185,9 @@ namespace MXNetSharp
             List<List<mx_uint>> out_shapes = new List<List<mx_uint>>();
             Dictionary<String, List<mx_uint>> arg_shapes = new Dictionary<string, List<mx_uint>>();
 
-            foreach(String arg_name in arg_name_list)
+            foreach (String arg_name in arg_name_list)
             {
-                if(args_map.ContainsKey(arg_name))
+                if (args_map.ContainsKey(arg_name))
                 {
                     arg_shapes[arg_name] = args_map[arg_name].GetShape();
                 }
@@ -1750,15 +2207,15 @@ namespace MXNetSharp
                     arg_arrays.Add(nd);
                     NDArray.SampleGaussian(0, 1, nd);
                 }
-                
-                if(arg_grad_store.ContainsKey(arg_name))
+
+                if (arg_grad_store.ContainsKey(arg_name))
                     grad_arrays.Add(arg_grad_store[arg_name]);
                 else
                     grad_arrays.Add(new NDArray(shape, context, false));
-                
-                if(grad_req_type.ContainsKey(arg_name))
+
+                if (grad_req_type.ContainsKey(arg_name))
                     grad_reqs.Add(grad_req_type[arg_name]);
-                else if(arg_name.EndsWith("data"))
+                else if (arg_name.EndsWith("data"))
                     grad_reqs.Add(OpReqType.kNullOp);
                 else
                     grad_reqs.Add(OpReqType.kWriteTo);
@@ -1769,7 +2226,7 @@ namespace MXNetSharp
             {
                 var shape = aux_shapes[i];
                 var aux_name = aux_name_list[i];
-                if(aux_map.ContainsKey(aux_name))
+                if (aux_map.ContainsKey(aux_name))
                 {
                     aux_arrays.Add(aux_map[aux_name]);
                 }
@@ -1789,8 +2246,8 @@ namespace MXNetSharp
         /// <param name="context">the context of all the infered arrays.</param>
         /// <param name="args_map">map of all the infered input arguments arrays.</param>
         /// <param name="known_args">map of some given arguments arrays.</param>
-        public void InferArgsMap(Context context, 
-            Dictionary<String, NDArray> args_map, 
+        public void InferArgsMap(Context context,
+            Dictionary<String, NDArray> args_map,
             Dictionary<String, NDArray> known_args)
         {
             var arg_name_list = ListArguments();
@@ -1813,7 +2270,7 @@ namespace MXNetSharp
             {
                 var shape = in_shapes[i];
                 var arg_name = arg_name_list[i];
-                if(known_args.ContainsKey(arg_name))
+                if (known_args.ContainsKey(arg_name))
                 {
                     args_map[arg_name] = known_args[arg_name];
                 }
@@ -1842,8 +2299,8 @@ namespace MXNetSharp
         /// <param name="aux_map">NDArray that stores the internal state in op </param>
         /// <returns>a new executor, which need to be free manually.</returns>
         public Executor SimpleBind(Context context,
-                       Dictionary<String, NDArray>  args_map,
-                       Dictionary<String, NDArray>  arg_grad_store,
+                       Dictionary<String, NDArray> args_map,
+                       Dictionary<String, NDArray> arg_grad_store,
                        Dictionary<String, OpReqType> grad_req_type,
                        Dictionary<String, NDArray> aux_map)
         {
@@ -1855,7 +2312,7 @@ namespace MXNetSharp
             InferExecutorArrays(context, arg_arrays, grad_arrays, grad_reqs,
                       aux_arrays, args_map, arg_grad_store, grad_req_type,
                       aux_map);
-            
+
             return new Executor(this, context, arg_arrays, grad_arrays, grad_reqs,
                                 aux_arrays, new Dictionary<string, Context>());
         }
@@ -1877,12 +2334,12 @@ namespace MXNetSharp
         /// shares state with shared_exec, and should not be used in parallel with it.
         /// </param>
         /// <returns>a new executor, which need to be free manually.</returns>
-        public Executor Bind(Context context, 
+        public Executor Bind(Context context,
             List<NDArray> arg_arrays,
             List<NDArray> grad_arrays,
             List<OpReqType> grad_reqs,
             List<NDArray> aux_arrays,
-            Dictionary<String, Context> group_to_ctx ,
+            Dictionary<String, Context> group_to_ctx,
             Executor shared_exec = null)
         {
             return new Executor(this, context, arg_arrays, grad_arrays, grad_reqs,
