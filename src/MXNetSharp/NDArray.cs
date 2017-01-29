@@ -25,6 +25,7 @@ namespace MXNetSharp
     using nn_uint = UInt32;
     using OpHandle = IntPtr;
     using GraphHandle = IntPtr;
+    using size_t = UInt64;
 
     public enum DeviceType
     {
@@ -185,6 +186,39 @@ namespace MXNetSharp
         }
     }
 
+    public unsafe class FloatListHolder : IDisposable
+    {
+        private float* _handle;
+        public float* Handle
+        {
+            get
+            {
+                return _handle;
+            }
+        }
+
+        public FloatListHolder(IList<float> list)
+        {
+            _handle = (float*)Marshal.AllocHGlobal(sizeof(float) * list.Count);
+            for (int i = 0; i < list.Count; i++)
+                _handle[i] = list[i];
+        }
+
+        ~FloatListHolder()
+        {
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            if (_handle != null)
+            {
+                Marshal.FreeHGlobal((IntPtr)_handle);
+                _handle = null;
+            }
+        }
+    }
+
     public unsafe class IntPtrListHolder : IDisposable
     {
         private IntPtr* _handle;
@@ -278,6 +312,13 @@ namespace MXNetSharp
             return handles;
         }
 
+        public static NDArrayHandle[] GetHandles(this IEnumerable<NDArray> collection)
+        {
+            List<NDArray> list = new List<NDArray>();
+            list.AddRange(collection);
+            return list.GetHandles();
+        }
+
         public static SymbolHandle[] GetHandles(this List<Symbol> list)
         {
             SymbolHandle[] handles = new SymbolHandle[list.Count];
@@ -314,6 +355,11 @@ namespace MXNetSharp
         public static UInt32ListHolder GetHolder(this IList<UInt32> list)
         {
             return new UInt32ListHolder(list);
+        }
+
+        public static FloatListHolder GetHolder(this IList<float> list)
+        {
+            return new FloatListHolder(list);
         }
     }
 
@@ -548,6 +594,19 @@ namespace MXNetSharp
             get { return _blob.Handle; }
         }
 
+        public size_t Size
+        {
+            get
+            {
+                size_t ret = 1;
+                foreach (var item in this.GetShape())
+                {
+                    ret *= item;
+                }
+                return ret;
+            }
+        }
+
         public NDArray()
         {
             NDArrayHandle handle;
@@ -635,6 +694,120 @@ namespace MXNetSharp
             }
         }
 
+        #region operators
+
+        public static NDArray operator +(NDArray lhs, mx_float scalar)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_plus_scalar").Set(lhs, scalar).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator -(NDArray lhs, mx_float scalar)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_minus_scalar").Set(lhs, scalar).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator *(NDArray lhs, mx_float scalar)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_mul_scalar").Set(lhs, scalar).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator /(NDArray lhs, mx_float scalar)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_div_scalar").Set(lhs, scalar).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator +(NDArray lhs, NDArray rhs)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_plus").Set(lhs, rhs).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator -(NDArray lhs, NDArray rhs)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_minus").Set(lhs, rhs).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator *(NDArray lhs, NDArray rhs)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_mul").Set(lhs, rhs).Invoke(ret);
+            return ret;
+        }
+
+        public static NDArray operator /(NDArray lhs, NDArray rhs)
+        {
+            NDArray ret = new NDArray();
+            new Operator("_div").Set(lhs, rhs).Invoke(ret);
+            return ret;
+        }
+
+        public void SetValue(mx_float scalar)
+        {
+            new Operator("_set_value").Set(scalar).Invoke(this);
+        }
+
+        public void Plus(mx_float scalar)
+        {
+            new Operator("_plus_scalar").Set(this, scalar).Invoke(this);
+        }
+
+        public void Minus(mx_float scalar)
+        {
+            new Operator("_minus_scalar").Set(this, scalar).Invoke(this);
+        }
+
+        public void Mul(mx_float scalar)
+        {
+            new Operator("_mul_scalar").Set(this, scalar).Invoke(this);
+        }
+
+        public void Div(mx_float scalar)
+        {
+            new Operator("_div_scalar").Set(this, scalar).Invoke(this);
+        }
+
+        public void Plus(NDArray nd)
+        {
+            new Operator("_plus_scalar").Set(this, nd).Invoke(this);
+        }
+
+        public void Minus(NDArray nd)
+        {
+            new Operator("_minus_scalar").Set(this, nd).Invoke(this);
+        }
+
+        public void Mul(NDArray nd)
+        {
+            new Operator("_mul_scalar").Set(this, nd).Invoke(this);
+        }
+
+        public void Div(NDArray nd)
+        {
+            new Operator("_div_scalar").Set(this, nd).Invoke(this);
+        }
+
+        public NDArray ArgmaxChannel()
+        {
+            NDArray ret = new NDArray();
+            new Operator("argmax_channel").Set(this).Invoke(ret);
+            return ret;
+        }
+
+
+
+        #endregion
+
         /// <summary>
         /// 
         /// </summary>
@@ -653,6 +826,183 @@ namespace MXNetSharp
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        /// <returns>the data pointer to the current NDArray</returns>
+        public mx_float* GetData()
+        {
+            mx_float* ret;
+            Logging.CHECK_NE((int)(GetContext().DeviceType), (int)DeviceType.kGPU);
+            CAPI.MXNDArrayGetData(_blob.Handle, &ret);
+            return ret;
+        }
+
+        /// <summary>
+        /// get the context of NDArray
+        /// </summary>
+        /// <returns>the context of NDArray</returns>
+        public Context GetContext()
+        {
+            int out_dev_type;
+            int out_dev_id;
+            CAPI.MXNDArrayGetContext(_blob.Handle, &out_dev_type, &out_dev_id);
+            return new Context((DeviceType)out_dev_type, out_dev_id);
+        }
+
+        /// <summary>
+        /// Do a synchronize copy from a continugous CPU memory region.
+        /// This function will call WaitToWrite before the copy is performed.
+        /// This is useful to copy data from existing memory region that are
+        /// not wrapped by NDArray(thus dependency not being tracked).
+        /// </summary>
+        /// <param name="data">the data source to copy from.</param>
+        /// <param name="size">the memory size we want to copy from.</param>
+        public void SyncCopyFromCPU(mx_float* data, size_t size)
+        {
+            CAPI.MXNDArraySyncCopyFromCPU(_blob.Handle, data, size);
+        }
+
+        /// <summary>
+        /// Do a synchronize copy to a continugous CPU memory region.
+        /// This function will call WaitToRead before the copy is performed.
+        /// This is useful to copy data from existing memory region that are
+        /// not wrapped by NDArray(thus dependency not being tracked).
+        /// </summary>
+        /// <param name="data">the data source to copyinto.</param>
+        /// <param name="size">the memory size we want to copy into. Defualt value is Size()</param>
+        public void SyncCopyToCPU(mx_float* data, size_t size)
+        {
+            CAPI.MXNDArraySyncCopyToCPU(_blob.Handle, data, size > 0 ? size : Size);
+        }
+
+        /// <summary>
+        /// Copy the content of current array to other.
+        /// </summary>
+        /// <param name="other">other the new context of this NDArray</param>
+        public void CopyTo(NDArray other)
+        {
+            new Operator("_copyto").Set(this).Invoke(other);
+        }
+
+        /// <summary>
+        /// return a new copy this NDArray
+        /// </summary>
+        /// <param name="context"></param>
+        /// <returns></returns>
+        public NDArray Clone(Context context)
+        {
+            NDArray ret = new NDArray(GetShape(), context);
+            new Operator("_copyto").Set(this).Invoke(ret);
+            return ret;
+        }
+
+        /// <summary>
+        /// return offset of the element at (h, w)
+        /// </summary>
+        /// <param name="h">height position</param>
+        /// <param name="w">width position</param>
+        /// <returns>offset of two dimensions array</returns>
+        public size_t Offset(size_t h = 0, size_t w = 0)
+        {
+            return (h * GetShape()[1]) + w;
+        }
+
+        /// <summary>
+        /// return offset of three dimensions array
+        /// </summary>
+        /// <param name="c">channel position</param>
+        /// <param name="h">height position</param>
+        /// <param name="w">width position</param>
+        /// <returns>offset of three dimensions array</returns>
+        public size_t Offset(size_t c, size_t h, size_t w)
+        {
+            var shape = GetShape();
+            return h * shape[0] * shape[2] + w * shape[0] + c;
+        }
+
+        /// <summary>
+        /// return value of the element at (h, w)
+        /// </summary>
+        /// <param name="h">height position</param>
+        /// <param name="w">width position</param>
+        /// <returns>value of two dimensions array</returns>
+        public mx_float At(size_t h, size_t w)
+        {
+            return GetData()[Offset(h, w)];
+        }
+
+        /// <summary>
+        /// return value of three dimensions array
+        /// </summary>
+        /// <param name="c">channel position</param>
+        /// <param name="h">height position</param>
+        /// <param name="w">width position</param>
+        /// <returns>value of three dimensions array</returns>
+        public mx_float At(size_t c, size_t h, size_t w)
+        {
+            return GetData()[Offset(c, h, w)];
+        }
+
+        /// <summary>
+        /// Slice a NDArray
+        /// </summary>
+        /// <param name="begin">begin index in first dim</param>
+        /// <param name="end">end index in first dim</param>
+        /// <returns>sliced NDArray</returns>
+        public NDArray Slice(mx_uint begin, mx_uint end)
+        {
+            NDArrayHandle handle;
+            Logging.CHECK_EQ(CAPI.MXNDArraySlice(Handle, begin, end, &handle), 0);
+            return new NDArray(handle);
+        }
+
+        /// <summary>
+        /// Return a reshaped NDArray that shares memory with current one
+        /// </summary>
+        /// <param name="newShape">the new shape</param>
+        /// <returns>reshaped NDarray</returns>
+        public NDArray Reshape(Shape newShape)
+        {
+            NDArrayHandle handle;
+            int[] dims = new int[newShape.NDim];
+            for (int i = 0; i < newShape.NDim; i++)
+                dims[i] = (int)newShape[i];
+            fixed (int* pDim = dims)
+            {
+                Logging.CHECK_EQ(
+               CAPI.MXNDArrayReshape(Handle, (int)newShape.NDim, pDim, &handle), 0);
+            }
+            return new NDArray(handle);
+        }
+
+        /// <summary>
+        /// Block until all the pending write operations with respect
+        /// to current NDArray are finished, and read can be performed.
+        /// </summary>
+        public void WaitToRead()
+        {
+            Logging.CHECK_EQ(CAPI.MXNDArrayWaitToRead(_blob.Handle), 0);
+        }
+
+        /// <summary>
+        /// Block until all the pending read/write operations with respect
+        /// to current NDArray are finished, and read/write can be performed.
+        /// </summary>
+        public void WaitToWrite()
+        {
+            Logging.CHECK_EQ(CAPI.MXNDArrayWaitToWrite(_blob.Handle), 0);
+        }
+
+        /// <summary>
+        /// Block until all the pending read/write operations with respect
+        /// to current NDArray are finished, and read/write can be performed.
+        /// </summary>
+        public static void WaitAll()
+        {
+            Logging.CHECK_EQ(CAPI.MXNDArrayWaitAll(), 0);
+        }
+
+        /// <summary>
         /// Sample gaussian distribution for each elements of out.
         /// </summary>
         /// <param name="mu">mean of gaussian distribution.</param>
@@ -662,6 +1012,126 @@ namespace MXNetSharp
         {
             new Operator("_sample_normal").Set(mu, sigma).Invoke(pOut);
         }
+
+        /// <summary>
+        /// Sample uniform distribution for each elements of out.
+        /// </summary>
+        /// <param name="begin">lower bound of distribution.</param>
+        /// <param name="end">upper bound of distribution.</param>
+        /// <param name="ndOut">output NDArray.</param>
+        public static void SampleUniform(mx_float begin, mx_float end, NDArray ndOut)
+        {
+            new Operator("_sample_uniform").Set(begin, end).Invoke(ndOut);
+        }
+
+        #region save & load
+
+        /// <summary>
+        /// Load NDArrays from binary file.
+        /// </summary>
+        /// <param name="file_name">name of the binary file</param>
+        /// <param name="array_list">a list of NDArrays returned, do not fill the list if nullptr is given.</param>
+        /// <param name="array_map">
+        /// a map from names to NDArrays returned, do not fill the map 
+        /// if nullptr is given or no names is stored in binary file.
+        /// </param>
+        public static void Load(String file_name,
+                   List<NDArray> array_list = null,
+                   Dictionary<String, NDArray> array_map = null)
+        {
+            mx_uint out_size, out_name_size;
+            NDArrayHandle* out_arr;
+            byte** out_names;
+            Logging.CHECK_EQ(CAPI.MXNDArrayLoad(file_name, &out_size, &out_arr, &out_name_size,
+                                   &out_names),
+                     0);
+            if (array_list != null)
+            {
+                for (mx_uint i = 0; i < out_size; ++i)
+                {
+                    array_list.Add(new NDArray(out_arr[i]));
+                }
+            }
+
+            if (array_map != null && out_name_size > 0)
+            {
+                Logging.CHECK_EQ((int)out_name_size, (int)out_size);
+                for (mx_uint i = 0; i < out_size; ++i)
+                {
+                    array_map[Marshal.PtrToStringAnsi((IntPtr)(out_names[i]))] = new NDArray(out_arr[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Load map of NDArrays from binary file.
+        /// </summary>
+        /// <param name="file_name">name of the binary file.</param>
+        /// <returns>a map from names to NDArrays.</returns>
+        public static Dictionary<String, NDArray> LoadToMap(String file_name)
+        {
+            Dictionary<String, NDArray> map = new Dictionary<String, NDArray>();
+            Load(file_name, null, map);
+            return map;
+        }
+
+        /// <summary>
+        /// Load list of NDArrays from binary file.
+        /// </summary>
+        /// <param name="file_name">name of the binary file.</param>
+        /// <returns>a list of NDArrays.</returns>
+        public static List<NDArray> LoadToList(String file_name)
+        {
+            List<NDArray> list = new List<NDArray>();
+            Load(file_name, list, null);
+            return list;
+        }
+
+        /// <summary>
+        /// save a map of string->NDArray to binary file.
+        /// </summary>
+        /// <param name="file_name">name of the binary file.</param>
+        /// <param name="array_map">a map from names to NDArrays.</param>
+        public static void Save(String file_name,
+                   Dictionary<String, NDArray> array_map)
+        {
+            using (StringListHolder hKeys = array_map.Keys.GetHolder())
+            {
+                NDArrayHandle[] handles = array_map.Values.GetHandles();
+                fixed (NDArrayHandle* pHandle = handles)
+                {
+                    Logging.CHECK_EQ(CAPI.MXNDArraySave(file_name, (uint)array_map.Count, pHandle, hKeys.Pointer), 0);
+                }
+            }
+        }
+
+        /// <summary>
+        /// save a list of NDArrays to binary file.
+        /// </summary>
+        /// <param name="file_name">name of the binary file.</param>
+        /// <param name="arrayList">a list of NDArrays.</param>
+        public static void Save(String file_name, List<NDArray> arrayList)
+        {
+            NDArrayHandle[] handles = arrayList.GetHandles();
+            fixed (NDArrayHandle* pHandle = handles)
+            {
+                Logging.CHECK_EQ(CAPI.MXNDArraySave(file_name, (uint)arrayList.Count, pHandle, null), 0);
+            }
+        }
+
+        public void Save(String fileName)
+        {
+            List<NDArray> list = new List<NDArray>();
+            NDArray.Save(fileName, list);
+        }
+
+        public static NDArray Load(String fileName)
+        {
+            List<NDArray> list = NDArray.LoadToList(fileName);
+            return list[0];
+        }
+
+        #endregion
 
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
@@ -1044,6 +1514,11 @@ namespace MXNetSharp
         List<NDArray> grad_arrays = new List<NDArray>();
         List<NDArray> aux_arrays = new List<NDArray>();
 
+        public List<NDArray> Outputs
+        {
+            get { return outputs; }
+        }
+
         public Executor(Symbol symbol, Context context,
            List<NDArray> arg_arrays,
            List<NDArray> grad_arrays,
@@ -1152,9 +1627,9 @@ namespace MXNetSharp
         /// loss function and head gradeitn is not needed.
         /// </summary>
         /// <param name="head_grads">the gradient of head nodes to be backproped.</param>
-        public void Backward(List<NDArray> head_grads)
+        public void Backward(List<NDArray> head_grads = null)
         {
-            int count = head_grads.Count;
+            int count = head_grads == null ? 0 : head_grads.Count;
             if (count > 0)
             {
                 NDArrayHandle* pHandles = stackalloc NDArrayHandle[head_grads.Count];
@@ -1902,15 +2377,15 @@ namespace MXNetSharp
 
         #endregion
 
-            /// <summary>
-            /// Apply activation function to input.
-            /// Softmax Activation is only available with CUDNN on GPUand will be
-            /// computed at each location across channel if input is 4D.
-            /// </summary>
-            /// <param name="symbol_name">name of the resulting symbol.</param>
-            /// <param name="data">Input data to activation function.</param>
-            /// <param name="act_type">Activation function to be applied. </param>
-            /// <returns>new symbol</returns>
+        /// <summary>
+        /// Apply activation function to input.
+        /// Softmax Activation is only available with CUDNN on GPUand will be
+        /// computed at each location across channel if input is 4D.
+        /// </summary>
+        /// <param name="symbol_name">name of the resulting symbol.</param>
+        /// <param name="data">Input data to activation function.</param>
+        /// <param name="act_type">Activation function to be applied. </param>
+        /// <returns>new symbol</returns>
         public static Symbol Activation(String symbol_name,
                          Symbol data,
                          String act_type)
@@ -2317,6 +2792,12 @@ namespace MXNetSharp
                                 aux_arrays, new Dictionary<string, Context>());
         }
 
+        public Executor SimpleBind(Context context,
+                       Dictionary<String, NDArray> args_map)
+        {
+            return SimpleBind(context, args_map, new Dictionary<string, NDArray>(), new Dictionary<string, OpReqType>(), new Dictionary<string, NDArray>());
+        }
+
         /// <summary>
         /// Create an executor by bind symbol with context and arguments.
         /// If user do not want to compute the gradients of i-th argument,
@@ -2349,8 +2830,43 @@ namespace MXNetSharp
 
     #endregion
 
-    public class Optimizer
+    public class Optimizer : IDisposable
     {
+        protected static OpMap op_map_ = new OpMap();
+
+        protected Dictionary<String, String> params_ = new Dictionary<string, string>();
+
+        public Object this[String key]
+        {
+            get { return params_[key]; }
+            set { params_[key] = value.ToString(); }
+        }
+
+        public Optimizer SetParam(String key, Object value)
+        {
+            params_[key] = value.ToString();
+            return this;
+        }
+
+        protected List<String> GetParamKeys_()
+        {
+            List<String> list = new List<string>();
+            list.AddRange(params_.Keys);
+            return list;
+        }
+
+        protected List<String> GetParamValues_()
+        {
+            List<String> list = new List<string>();
+            list.AddRange(params_.Values);
+            return list;
+        }
+
+        public virtual String GetType()
+        {
+            throw new NotImplementedException();
+        }
+
         /// <summary>
         /// Update a weight with gradient.
         /// </summary>
@@ -2362,12 +2878,135 @@ namespace MXNetSharp
         public void Update(int index, NDArray weight, NDArray grad, mx_float lr,
               mx_float wd)
         {
-            throw new NotImplementedException();
+            params_["lr"] = lr.ToString();
+            params_["wd"] = wd.ToString();
+            Update(index, weight, grad);
         }
 
         public virtual void Update(int index, NDArray weight, NDArray grad)
         {
             throw new NotImplementedException();
+        }
+
+        /// <summary>
+        /// Serialize the optimizer parameters to a string.
+        /// </summary>
+        /// <returns>serialization</returns>
+        public String Serialize()
+        {
+            params_["opt_type"] = GetType();
+            StringBuilder sb = new StringBuilder();
+            foreach(var pair in params_)
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(pair.Key).Append('=').Append(pair.Value);
+            }
+            return sb.ToString();
+        }
+
+        public virtual void Dispose()
+        {
+        }
+
+        ~Optimizer()
+        {
+            Dispose();
+        }
+    }
+
+    public unsafe class SGDOptimizer : Optimizer
+    {
+        AtomicSymbolCreator update_handle_;
+        AtomicSymbolCreator mom_update_handle_;
+        Dictionary<int, NDArray> states_ = new Dictionary<int, NDArray>();
+
+        public override string GetType()
+        {
+            return "sgd";
+        }
+
+        public SGDOptimizer():base()
+        {
+            update_handle_ = op_map_.GetSymbolCreator("sgd_update");
+            mom_update_handle_ = op_map_.GetSymbolCreator("sgd_mom_update");
+        }
+
+        public override void Dispose()
+        {
+            if (states_ == null) return;
+            foreach(var item in states_.Values)
+            {
+                item.Dispose();
+            }
+            states_ = null;
+        }
+
+        public override void Update(int index, NDArray weight, NDArray grad)
+        {
+            if (states_.ContainsKey(index) == false)
+            {
+                CreateState(index, weight);
+            }
+
+            var keys = GetParamKeys_();
+            var values = GetParamValues_();
+            Logging.CHECK_EQ(keys.Count, values.Count);
+
+            NDArrayHandle[] inputs = new NDArrayHandle[3];
+            inputs[0] = weight.Handle;
+            inputs[1] = grad.Handle;
+
+            int num_outputs = 1;
+            NDArrayHandle output = weight.Handle;
+            NDArrayHandle* outputs = &output;
+
+            using (StringListHolder hKeys = keys.GetHolder())
+            using (StringListHolder hValues = values.GetHolder())
+            {
+                fixed(IntPtr* pInputs = inputs)
+                {
+                    if (states_[index] == null)
+                    {
+                        CAPI.MXImperativeInvoke(update_handle_, 2, pInputs,
+                            &num_outputs, &outputs,
+                            keys.Count, hKeys.Pointer, hValues.Pointer);
+                    }
+                    else
+                    {
+                        inputs[2] = states_[index].Handle;
+                        CAPI.MXImperativeInvoke(mom_update_handle_, 3, pInputs,
+                            &num_outputs, &outputs,
+                              keys.Count, hKeys.Pointer, hValues.Pointer);
+                    }
+                }
+            }
+        }
+
+        private void CreateState(int index, NDArray weight)
+        {
+            if (params_.ContainsKey("momentum") == false)
+            {
+                states_[index] = null;
+            }
+            else
+            {
+                states_[index] = new NDArray(weight.GetShape(), weight.GetContext());
+                states_[index].SetValue(0);
+            }
+        }
+    }
+
+    public class OptimizerRegistry
+    {
+        public static Optimizer Find(String name)
+        {
+            switch(name)
+            {
+                case "sgd":
+                case "ccsgd":
+                default:
+                    return new SGDOptimizer();
+            }
         }
     }
 }

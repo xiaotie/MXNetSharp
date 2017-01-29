@@ -11,6 +11,10 @@ namespace MXNetSharp
         {
         }
 
+        public static void CHECK_NE(int v1, int v2)
+        {
+        }
+
         public static void LOG_FATAL(String msg)
         {
 
