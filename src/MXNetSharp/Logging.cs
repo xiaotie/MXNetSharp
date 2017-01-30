@@ -9,6 +9,12 @@ namespace MXNetSharp
     {
         public static void CHECK_EQ(int v1, int v2)
         {
+            if (v1 != v2)
+            {
+                String error = CAPI.MXGetLastError();
+                if (error != null) Console.WriteLine("Logging CHECK_EQ Failed: " + error);
+                else Console.WriteLine("Logging CHECK_EQ Failed");
+            }
         }
 
         public static void CHECK_NE(int v1, int v2)

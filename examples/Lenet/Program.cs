@@ -65,6 +65,8 @@ namespace Lenet
 
             Symbol lenet = Symbol.SoftmaxOutput("softmax", fc2, data_label);
 
+            Console.WriteLine("lenet:" + Environment.NewLine + lenet.ToString());
+
             foreach (String s in lenet.ListArguments())
                 Console.WriteLine(s);
 

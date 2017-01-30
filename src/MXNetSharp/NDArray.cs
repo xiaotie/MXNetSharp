@@ -268,9 +268,6 @@ namespace MXNetSharp
         {
             _list = list;
             _hList = new List<StringHolder>(list.Count);
-            foreach (String item in list)
-                _hList.Add(new StringHolder(item));
-
             _pointer = (Byte**)Marshal.AllocHGlobal(sizeof(IntPtr) * list.Count);
             for (int i = 0; i < list.Count; i++)
             {
@@ -804,8 +801,6 @@ namespace MXNetSharp
             return ret;
         }
 
-
-
         #endregion
 
         /// <summary>
@@ -941,6 +936,16 @@ namespace MXNetSharp
         public mx_float At(size_t c, size_t h, size_t w)
         {
             return GetData()[Offset(c, h, w)];
+        }
+
+        public mx_float this[int h, int w]
+        {
+            get { return GetData()[Offset((uint)h,(uint)w)]; }
+        }
+
+        public mx_float this[int c, int h, int w]
+        {
+            get { return GetData()[Offset((uint)c, (uint)h, (uint)w)]; }
         }
 
         /// <summary>
@@ -1271,6 +1276,12 @@ namespace MXNetSharp
             return this;
         }
 
+        public Operator SetParam(String name, bool val)
+        {
+            params_[name] = val ? "1" : "0";
+            return this;
+        }
+
         /// <summary>
         /// set config parameters from positional inputs
         /// </summary>
@@ -1441,10 +1452,10 @@ namespace MXNetSharp
                 SymbolHandle symbol_handle = new SymbolHandle();
                 byte** pInputKeys = input_keys.Count > 0 ? hInputKeys.Pointer : null;
 
-                CAPI.MXSymbolCreateAtomicSymbol(handle_, (uint)params_.Count, hParamKeys.Pointer,
-                                       hParamValues.Pointer, &symbol_handle);
-                CAPI.MXSymbolCompose(symbol_handle, pName, (uint)input_symbols.Count, hInputKeys.Pointer,
-                                hInputSymbols.Handle);
+                Logging.CHECK_EQ(CAPI.MXSymbolCreateAtomicSymbol(handle_, (uint)params_.Count, hParamKeys.Pointer,
+                                       hParamValues.Pointer, &symbol_handle), 0);
+                Logging.CHECK_EQ(CAPI.MXSymbolCompose(symbol_handle, pName, (uint)input_symbols.Count, pInputKeys,
+                                hInputSymbols.Handle), 0);
                 return new Symbol(symbol_handle);
             }
         }
@@ -2096,7 +2107,7 @@ namespace MXNetSharp
                   Shape kernel,
                   int num_filter)
         {
-            return Convolution(symbol_name, data, weight, bias, kernel, num_filter, new Shape(), new Shape(), new Shape());
+            return Convolution(symbol_name, data, weight, bias, kernel, num_filter, new Shape(0,0), new Shape(0,0), new Shape(0,0));
         }
 
         private static String[] PoolingPoolTypeValues = {
@@ -2477,6 +2488,11 @@ namespace MXNetSharp
             Byte* pOut;
             Logging.CHECK_EQ(CAPI.MXSymbolSaveToJSON(Handle, &pOut), 0);
             return Marshal.PtrToStringAnsi((IntPtr)pOut);
+        }
+
+        public override string ToString()
+        {
+            return ToJSON();
         }
 
         public Symbol GetInternals()

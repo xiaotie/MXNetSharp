@@ -8,6 +8,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{5758C7B0-D7AB-4919-A330-21CCABFA5731}"
 	ProjectSection(SolutionItems) = preProject
 		global.json = global.json
+		README.md = README.md
 	EndProjectSection
 EndProject
 Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "MXNetSharp", "src\MXNetSharp\MXNetSharp.xproj", "{7303F2DA-DB4D-49F4-9CDF-A62464B07880}"
