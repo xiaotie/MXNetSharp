@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace MXNetSharp
 {
@@ -34,23 +35,62 @@ namespace MXNetSharp
             Byte[] dataBuf = System.IO.File.ReadAllBytes(fileNameOfDataFile);
             Byte[] fileBuf = System.IO.File.ReadAllBytes(fileNameOfLabelFile);
 
-            LabeledDataSet dataSet = new LabeledDataSet();
-            foreach (Byte item in dataBuf)
+            for(int i = 0; i < dataBuf.Length; i++)
             {
-                float val = item / 256.0f;
-                dataSet.Data.Add(val);
+                if (i < 16) continue;
+                float val = dataBuf[i] / 256.0f;
+                Data.Add(val);
             }
 
             fixed (Byte* pFileBuf = fileBuf)
             {
-                int* pLabel = (int*)pFileBuf;
-                int count = fileBuf.Length / 4;
+                Byte* pLabelData0 = pFileBuf + 8;
+                int count = fileBuf.Length - 8;
                 for (int i = 0; i < count; i++)
                 {
-                    int lebel = ReverseInt(pLabel[i]);
-                    dataSet.Label.Add(lebel);
+                    Label.Add(pLabelData0[i]);
                 }
-                dataSet.Count = count;
+                Count = count;
+            }
+        }
+
+        public void Print(int idx = 0, int count = 10)
+        {
+            if (idx < 0) idx = 0;
+
+            if (count >= this.Count - idx) count = this.Count - idx - 1;
+
+            List<float> data = new List<float>();
+
+            for(int i = 0; i < count; i++)
+            {
+                int c = (int)Label[i + idx];
+
+                data.Clear();
+                int dataIdx = (i + idx) * 28 * 28;
+                for(int k = 0; k < 28*28; k++)
+                {
+                    data.Add(Data[dataIdx + k]);
+                }
+
+                Console.WriteLine("============================");
+                Console.WriteLine();
+                Console.WriteLine(c + ':');
+                Console.WriteLine();
+
+                StringBuilder sb = new StringBuilder();
+                for (int j = 0; j < data.Count; j++)
+                {
+                    float val = data[j];
+                    sb.Append(val > 0 ? '#' : '.');
+                    if(sb.Length == 28)
+                    {
+                        Console.WriteLine(sb.ToString());
+                        sb.Clear();
+                    }
+                }
+                Console.WriteLine();
+                System.Threading.Thread.Sleep(2000);
             }
         }
     }

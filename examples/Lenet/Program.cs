@@ -26,13 +26,13 @@ namespace Lenet
         NDArray val_data;
         NDArray val_label;
 
-        public void Run()
+        private Symbol CreateLenetCpp()
         {
             /*
-            * LeCun, Yann, Leon Bottou, Yoshua Bengio, and Patrick Haffner.
-            * "Gradient-based learning applied to document recognition."
-            * Proceedings of the IEEE (1998)
-            * */
+          * LeCun, Yann, Leon Bottou, Yoshua Bengio, and Patrick Haffner.
+          * "Gradient-based learning applied to document recognition."
+          * Proceedings of the IEEE (1998)
+          * */
             /*define the symbolic net*/
 
             Symbol data = Symbol.Variable("data");
@@ -65,21 +65,71 @@ namespace Lenet
 
             Symbol lenet = Symbol.SoftmaxOutput("softmax", fc2, data_label);
 
-            Console.WriteLine("lenet:" + Environment.NewLine + lenet.ToString());
+            System.IO.File.WriteAllText("lenet.json", lenet.ToJSON());
+            return lenet;
+        }
 
-            foreach (String s in lenet.ListArguments())
-                Console.WriteLine(s);
+        private Symbol CreateLenetPython()
+        {
+            Symbol data = Symbol.Variable("data");
+            Symbol data_label = Symbol.Variable("data_label");
+
+            // first conv
+
+            //  mx.symbol.Convolution(data = data, kernel = (5, 5), num_filter = 20)
+            Symbol conv1 = new Operator("Convolution").SetParam("kernel", "(5, 5)").SetParam("num_filter", "20").SetData(data).CreateSymbol("conv1");
+            // tanh1 = mx.symbol.Activation(data=conv1, act_type="tanh")
+            Symbol tanh1 = new Operator("Activation").SetParam("act_type", "tanh").SetData(conv1).CreateSymbol("tanh1");
+            // pool1 = mx.symbol.Pooling(data=tanh1, pool_type="max", kernel = (2,2), stride = (2,2))
+            Symbol pool1 = new Operator("Pooling").SetParam("pool_type", "max").SetParam("kernel", "(2, 2)").SetParam("stride", "(2, 2)").SetData(tanh1).CreateSymbol("pool1");
+
+            // second conv
+            // conv2 = mx.symbol.Convolution(data=pool1, kernel=(5,5), num_filter=50)
+            Symbol conv2 = new Operator("Convolution").SetParam("kernel", "(5, 5)").SetParam("num_filter", "50").SetData(pool1).CreateSymbol("conv2");
+            // tanh2 = mx.symbol.Activation(data=conv2, act_type="tanh")
+            Symbol tanh2 = new Operator("Activation").SetParam("act_type", "tanh").SetData(conv2).CreateSymbol("tanh2");
+            // pool2 = mx.symbol.Pooling(data=tanh2, pool_type="max", kernel = (2,2), stride = (2,2))
+            Symbol pool2 = new Operator("Pooling").SetParam("pool_type", "max").SetParam("kernel", "(2, 2)").SetParam("stride", "(2, 2)").SetData(tanh2).CreateSymbol("pool2");
+
+            // first fullc
+            // flatten = mx.symbol.Flatten(data=pool2)
+            Symbol flatten = new Operator("Flatten").SetData(pool2).CreateSymbol("flatten");
+            // fc1 = mx.symbol.FullyConnected(data=flatten, num_hidden=500)
+            Symbol fc1 = new Operator("FullyConnected").SetParam("num_hidden", "500").SetData(flatten).CreateSymbol("fc1");
+            // tanh3 = mx.symbol.Activation(data=fc1, act_type="tanh")
+            Symbol tanh3 = new Operator("Activation").SetParam("act_type", "tanh").SetData(fc1).CreateSymbol("tanh3");
+
+            // second fullc
+            // fc2 = mx.symbol.FullyConnected(data=tanh3, num_hidden=num_classes)
+            Symbol fc2 = new Operator("FullyConnected").SetParam("num_hidden", "10").SetData(tanh3).CreateSymbol("fc2");
+
+            // loss
+            // lenet = mx.symbol.SoftmaxOutput(data=fc2, name='softmax')
+            Symbol lenet = new Operator("SoftmaxOutput").SetData(fc2).SetLabel(data_label).CreateSymbol("softmax");
+
+            System.IO.File.WriteAllText("lenet.json", lenet.ToJSON());
+
+            foreach (var item in lenet.ListAuxiliaryStates())
+                Console.WriteLine(item);
+
+            return lenet;
+        }
+
+        public void Run()
+        {
+            Symbol lenet = CreateLenetPython();
 
             /*setup basic configs*/
             int val_fold = 1;
             int W = 28;
             int H = 28;
-            uint batch_size = 42;
-            int max_epoch = 100000;
-            float learning_rate = 0.0001f;
-            float weight_decay = 0.0001f;
+            uint batch_size = 256;
+            int max_epoch = 20;
+            float learning_rate = 0.05f;
+            float weight_decay = 0.1f;
 
-            LabeledDataSet ds = new MnistDataSet("","");
+            MnistDataSet ds = new MnistDataSet(@"C:\素材\data\train-images.idx3-ubyte", @"C:\素材\data\train-labels.idx1-ubyte");
+            //ds.Print();
 
             List<float> listData = ds.Data;
             List<float> listLabel = ds.Label;
@@ -114,7 +164,7 @@ namespace Lenet
 
                 Console.WriteLine("here slice  fin");
                 lenet.InferArgsMap(ctx_dev, args_map, args_map);
-                Optimizer opt = OptimizerRegistry.Find("ccsgd");
+                Optimizer opt = OptimizerRegistry.Find("sgd");
                 opt.SetParam("momentum", 0.9)
                    .SetParam("rescale_grad", 1.0)
                    .SetParam("clip_gradient", 10);

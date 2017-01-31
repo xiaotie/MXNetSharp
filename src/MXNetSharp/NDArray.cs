@@ -1282,6 +1282,16 @@ namespace MXNetSharp
             return this;
         }
 
+        public Operator SetData(Symbol data)
+        {
+            return SetInput("data", data);
+        }
+
+        public Operator SetLabel(Symbol label)
+        {
+            return SetInput("label", label);
+        }
+
         /// <summary>
         /// set config parameters from positional inputs
         /// </summary>
@@ -1305,15 +1315,6 @@ namespace MXNetSharp
             input_keys.Add(name);
             input_symbols.Add(symbol.Handle);
             return this;
-        }
-
-        /// <summary>
-        /// add an input symbol
-        /// </summary>
-        /// <param name="symbol">the input symbol</param>
-        public void PushInput(Symbol symbol)
-        {
-            input_symbols.Add(symbol.Handle);
         }
 
         /// <summary>
@@ -2107,7 +2108,7 @@ namespace MXNetSharp
                   Shape kernel,
                   int num_filter)
         {
-            return Convolution(symbol_name, data, weight, bias, kernel, num_filter, new Shape(0,0), new Shape(0,0), new Shape(0,0));
+            return Convolution(symbol_name, data, weight, bias, kernel, num_filter, new Shape(1,1), new Shape(1,1), new Shape(0,0));
         }
 
         private static String[] PoolingPoolTypeValues = {
@@ -2409,6 +2410,11 @@ namespace MXNetSharp
                      .SetParam("act_type", act_type)
                      .SetInput("data", data)
                      .CreateSymbol(symbol_name);
+        }
+
+        public static Operator Create(String opName)
+        {
+            return new Operator(opName);
         }
 
         public static Symbol Activation(String symbol_name,
