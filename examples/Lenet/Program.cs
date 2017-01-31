@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 namespace Lenet
 {
     using MXNetSharp;
+    using MXNetSharp.Operators;
 
     public class Program
     {
@@ -36,35 +37,34 @@ namespace Lenet
             // first conv
 
             //  mx.symbol.Convolution(data = data, kernel = (5, 5), num_filter = 20)
-            Symbol conv1 = new Operator("Convolution").SetParam("kernel", "(5, 5)").SetParam("num_filter", "20").SetData(data).CreateSymbol();
+            Symbol conv1 = new Convolution(new Shape(5,5), 20).CreateSymbol(data);
             // tanh1 = mx.symbol.Activation(data=conv1, act_type="tanh")
-            Symbol tanh1 = new Operator("Activation").SetParam("act_type", "tanh").SetData(conv1).CreateSymbol();
+            Symbol tanh1 = new Activation().CreateSymbol(conv1);
             // pool1 = mx.symbol.Pooling(data=tanh1, pool_type="max", kernel = (2,2), stride = (2,2))
-            Symbol pool1 = new Operator("Pooling").SetParam("pool_type", "max").SetParam("kernel", "(2, 2)").SetParam("stride", "(2, 2)").SetData(tanh1).CreateSymbol();
-
+            Symbol pool1 = new Pooling(new Shape(2,2), new Shape(2,2)).CreateSymbol(tanh1);
             // second conv
             // conv2 = mx.symbol.Convolution(data=pool1, kernel=(5,5), num_filter=50)
-            Symbol conv2 = new Operator("Convolution").SetParam("kernel", "(5, 5)").SetParam("num_filter", "50").SetData(pool1).CreateSymbol();
+            Symbol conv2 = new Convolution(new Shape(5, 5), 50).CreateSymbol(pool1);
             // tanh2 = mx.symbol.Activation(data=conv2, act_type="tanh")
-            Symbol tanh2 = new Operator("Activation").SetParam("act_type", "tanh").SetData(conv2).CreateSymbol();
+            Symbol tanh2 = new Activation().CreateSymbol(conv2);
             // pool2 = mx.symbol.Pooling(data=tanh2, pool_type="max", kernel = (2,2), stride = (2,2))
-            Symbol pool2 = new Operator("Pooling").SetParam("pool_type", "max").SetParam("kernel", "(2, 2)").SetParam("stride", "(2, 2)").SetData(tanh2).CreateSymbol();
+            Symbol pool2 = new Pooling(new Shape(2, 2), new Shape(2, 2)).CreateSymbol(tanh2);
 
             // first fullc
             // flatten = mx.symbol.Flatten(data=pool2)
-            Symbol flatten = new Operator("Flatten").SetData(pool2).CreateSymbol();
+            Symbol flatten = new Flatten().CreateSymbol(pool2);
             // fc1 = mx.symbol.FullyConnected(data=flatten, num_hidden=500)
-            Symbol fc1 = new Operator("FullyConnected").SetParam("num_hidden", "500").SetData(flatten).CreateSymbol();
+            Symbol fc1 = new FullyConnected(500).CreateSymbol(flatten);
             // tanh3 = mx.symbol.Activation(data=fc1, act_type="tanh")
-            Symbol tanh3 = new Operator("Activation").SetParam("act_type", "tanh").SetData(fc1).CreateSymbol();
+            Symbol tanh3 = new Activation().CreateSymbol(fc1);
 
             // second fullc
             // fc2 = mx.symbol.FullyConnected(data=tanh3, num_hidden=num_classes)
-            Symbol fc2 = new Operator("FullyConnected").SetParam("num_hidden", "10").SetData(tanh3).CreateSymbol();
+            Symbol fc2 = new FullyConnected(10).CreateSymbol(tanh3);
 
             // loss
             // lenet = mx.symbol.SoftmaxOutput(data=fc2, name='softmax')
-            Symbol lenet = new Operator("SoftmaxOutput").SetData(fc2).SetLabel(data_label).CreateSymbol();
+            Symbol lenet = new SoftmaxOutput().CreateSymbol(fc2, data_label);
 
             System.IO.File.WriteAllText("lenet.json", lenet.ToJSON());
 

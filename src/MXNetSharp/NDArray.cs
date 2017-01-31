@@ -428,24 +428,6 @@ namespace MXNetSharp
             _dimmensions.AddRange(dimmensions);
         }
 
-        public static bool operator ==(Shape a, Shape b)
-        {
-            if (a._ndim != b._ndim) return false;
-            else
-            {
-                for (int i = 0; i < a._ndim; i++)
-                {
-                    if (a._dimmensions[i] != b._dimmensions[i]) return false;
-                }
-                return true;
-            }
-        }
-
-        public static bool operator !=(Shape a, Shape b)
-        {
-            return !(a == b);
-        }
-
         public Shape Clone()
         {
             Shape shape = new Shape();
@@ -1478,6 +1460,19 @@ namespace MXNetSharp
                                 hInputSymbols.Handle), 0);
                 return new Symbol(symbol_handle);
             }
+        }
+
+        public Symbol CreateSymbol(Symbol data, String name = null)
+        {
+            if(data != null) this.SetInput("data", data);
+            return CreateSymbol(name);
+        }
+
+        public Symbol CreateSymbol(Symbol data, Symbol label, String name = null)
+        {
+            if (data != null) this.SetInput("data", data);
+            if (label != null) this.SetInput("label", label);
+            return CreateSymbol(name);
         }
 
         public void Invoke(List<NDArray> outputs)
