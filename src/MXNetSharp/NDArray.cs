@@ -1169,8 +1169,8 @@ namespace MXNetSharp
     /// </summary>
     public unsafe class OpMap
     {
-        Dictionary<String, AtomicSymbolCreator> symbol_creators_ = new Dictionary<String, AtomicSymbolCreator>();
-        Dictionary<String, OpHandle> op_handles_ = new Dictionary<string, OpHandle>();
+        Dictionary<String, AtomicSymbolCreator> _atomSymbolCreators = new Dictionary<String, AtomicSymbolCreator>();
+        Dictionary<String, OpHandle> _nnOpHandles = new Dictionary<string, OpHandle>();
 
         public OpMap()
         {
@@ -1192,7 +1192,7 @@ namespace MXNetSharp
                   &arg_descriptions, &key_var_num_args);
                 Logging.CHECK_EQ(r, 0);
                 String sName = Marshal.PtrToStringAnsi((IntPtr)name);
-                symbol_creators_[sName] = symbol_creators[i];
+                _atomSymbolCreators[sName] = symbol_creators[i];
             }
 
             nn_uint num_ops;
@@ -1205,15 +1205,22 @@ namespace MXNetSharp
                 r = CAPI.NNGetOpHandle(op_names[i], &handle);
                 Logging.CHECK_EQ(r, 0);
                 String sName = Marshal.PtrToStringAnsi((IntPtr)(op_names[i]));
-                op_handles_[sName] = handle;
+                _nnOpHandles[sName] = handle;
             }
         }
 
         public String GetAllOperatorNames()
         {
             StringBuilder sb = new StringBuilder();
-            var keys = op_handles_.Keys;
+            var keys = _nnOpHandles.Keys;
             int idx = 0;
+            foreach (var key in keys)
+            {
+                if (idx > 0) sb.Append(',');
+                sb.Append(key);
+                idx++;
+            }
+            keys = _atomSymbolCreators.Keys;
             foreach (var key in keys)
             {
                 if (idx > 0) sb.Append(',');
@@ -1225,14 +1232,14 @@ namespace MXNetSharp
 
         public OpHandle GetOpHandle(String name)
         {
-            return op_handles_[name];
+            return _nnOpHandles[name];
         }
 
         public AtomicSymbolCreator GetSymbolCreator(String name)
         {
-            if (symbol_creators_.ContainsKey(name) == false)
+            if (_atomSymbolCreators.ContainsKey(name) == false)
                 return GetOpHandle(name);
-            return symbol_creators_[name];
+            return _atomSymbolCreators[name];
         }
     }
 
@@ -1909,7 +1916,12 @@ namespace MXNetSharp
 
     public unsafe class Symbol
     {
-        private static OpMap _opMap = new OpMap();
+        private static OpMap _opMap;
+
+        static Symbol()
+        {
+            _opMap = new OpMap();
+        }
 
         private SymBlob blob_ptr_;
 

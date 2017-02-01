@@ -13,7 +13,14 @@ namespace Lenet
     {
         public static void Main(string[] args)
         {
-            LenetModel.RunPredictTest();
+            //OpMap map = new OpMap();
+            //String names = map.GetAllOperatorNames();
+            //Console.WriteLine("Oprators:" + names);
+
+            Symbol net = Symbol.Load("lenet.json");
+            Console.WriteLine(net);
+
+            //LenetModel.RunPredictTest();
 
             //Lenet lenet = new Lenet();
             //lenet.Run();
