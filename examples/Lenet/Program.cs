@@ -13,9 +13,126 @@ namespace Lenet
     {
         public static void Main(string[] args)
         {
-            Lenet lenet = new Lenet();
-            lenet.Run();
+            LenetModel.RunPredictTest();
+
+            //Lenet lenet = new Lenet();
+            //lenet.Run();
             Console.ReadKey();
+        }
+    }
+
+    public unsafe class LenetModel
+    {
+        private Symbol _symbol;
+        private Executor _exe;
+        private NDArray _data;
+        private NDArray _label;
+        private Context _ctx;
+        private NDArray _output;
+        private Dictionary<String, NDArray> _args;
+
+        public NDArray Output
+        {
+            get { return _output; }
+        }
+
+        public LenetModel()
+        {
+            _ctx = Context.Gpu();
+            _label = new NDArray(new Shape(1), _ctx);
+            _label.SetValue(0);
+            _data = new NDArray(new Shape(1, 1, 28, 28), _ctx);
+            _data.SetValue(0);
+            _output = new NDArray(new Shape(1), Context.Cpu(), false);
+            _output.SetValue(0);
+            NDArray.WaitAll();
+        }
+
+        public void Load(String ndPath)
+        {
+            Symbol lenet = Lenet.CreateLenet();
+            Dictionary<String, NDArray> map = NDArray.LoadToMap(ndPath);
+            Dictionary<String, NDArray> args = new Dictionary<string, NDArray>();
+            Dictionary<String, NDArray> auxs = new Dictionary<string, NDArray>();
+            foreach (var pair in map)
+            {
+                int idx = pair.Key.IndexOf(':');
+                if (idx > 0)
+                {
+                    String tp = pair.Key.Substring(0, idx);
+                    String name = pair.Key.Substring(idx + 1);
+                    if (tp == "arg") args[name] = pair.Value;
+                    else if (tp == "aux") auxs[name] = pair.Value;
+                }
+                else
+                {
+                    args[pair.Key] = pair.Value;
+                }
+            }
+
+            Context ctx = Context.Gpu();
+            args["data"] = _data;
+            args["data_label"] = _label;
+            lenet.InferArgsMap(ctx, args, args, new XavierInitializer(2));
+            _symbol = lenet;
+            _args = args;
+            _exe = lenet.SimpleBind(_ctx, args, new XavierInitializer(2));
+        }
+
+        public String Predict(NDArray nd)
+        {
+            nd.CopyTo(_data);
+            NDArray.WaitAll();
+            _exe.Forward(false);
+            List<NDArray> outputs = _exe.Outputs;
+            NDArray outCpu = outputs[0].Clone(Context.Cpu());
+            NDArray.WaitAll();
+            float* p = outCpu.GetData();
+            int iMax = 0;
+            float max = p[0];
+            for(int i = 0; i < 10; i ++ )
+            {
+                if(p[i] > max)
+                {
+                    max = p[i];
+                    iMax = i;
+                }
+            }
+            return iMax.ToString();
+        }
+
+        public static void RunPredictTest()
+        {
+            LenetModel model = new LenetModel();
+            model.Load(@"lenet.params");
+            MnistDataSet ds = new MnistDataSet(@"C:\素材\data\train-images.idx3-ubyte", @"C:\素材\data\train-labels.idx1-ubyte");
+            int W = 28;
+            int H = 28;
+            List<float> listData = ds.Data;
+            List<float> listLabel = ds.Label;
+            int dataCount = ds.Count;
+            using (FloatListHolder hData = listData.GetHolder())
+            using (FloatListHolder hLabel = listLabel.GetHolder())
+            {
+                NDArray data_array = new NDArray(new Shape((uint)dataCount, 1, (uint)W, (uint)H), Context.Gpu(),
+                                 false);  // store in main memory, and copy to
+                                          // device memory while training
+                NDArray label_array = new NDArray(new Shape((uint)dataCount), Context.Gpu(),
+                    false);  // it's also ok if just store them all in device memory
+
+                data_array.SyncCopyFromCPU(hData.Handle, (ulong)(dataCount * W * H));
+                label_array.SyncCopyFromCPU(hLabel.Handle, (ulong)dataCount);
+                data_array.WaitToRead();
+                label_array.WaitToRead();
+
+                for (int i = 0; i < 100; i++)
+                {
+                    NDArray data = data_array.Slice((uint)i, (uint)i + 1);
+                    String output = model.Predict(data);
+                    MnistDataSet.PrintImage(output, data);
+                    System.Threading.Thread.Sleep(1000);
+                }
+            }
         }
     }
 
@@ -29,7 +146,7 @@ namespace Lenet
         NDArray val_data;
         NDArray val_label;
 
-        private Symbol CreateLenet()
+        public static Symbol CreateLenet()
         {
             Symbol data = Symbol.Variable("data");
             Symbol data_label = Symbol.Variable("data_label");
@@ -74,9 +191,16 @@ namespace Lenet
             return lenet;
         }
 
+        private Symbol CreateFrom(String jsonFilePath)
+        {
+            return Symbol.Load(jsonFilePath);
+        }
+
         public void Run()
         {
             Symbol lenet = CreateLenet();
+
+            //Symbol lenet = CreateFrom(@"C:\Works\Projects\80_Project_Python\mxnet\ocr\model\mnist-symbol.json");
 
             /*setup basic configs*/
             int valFold = 1;
@@ -153,6 +277,8 @@ namespace Lenet
                     Console.WriteLine("Epoch[" + ITER + "] validation accuracy = " + ValAccuracy(batchSize, lenet) + ", time cost " + sw.Elapsed.TotalSeconds.ToString("0.00") + "s");
                 }
             }
+
+            NDArray.Save("lenet.params", args_map);
         }
 
         private float ValAccuracy(uint batch_size, Symbol lenet)

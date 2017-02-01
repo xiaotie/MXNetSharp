@@ -73,25 +73,36 @@ namespace MXNetSharp
                     data.Add(Data[dataIdx + k]);
                 }
 
-                Console.WriteLine("============================");
-                Console.WriteLine();
-                Console.WriteLine(c + ':');
-                Console.WriteLine();
+                PrintImage(c.ToString(), data);
 
-                StringBuilder sb = new StringBuilder();
-                for (int j = 0; j < data.Count; j++)
-                {
-                    float val = data[j];
-                    sb.Append(val > 0 ? '#' : '.');
-                    if(sb.Length == 28)
-                    {
-                        Console.WriteLine(sb.ToString());
-                        sb.Clear();
-                    }
-                }
-                Console.WriteLine();
                 System.Threading.Thread.Sleep(2000);
             }
+        }
+
+        public static void PrintImage(String c, NDArray data)
+        {
+            PrintImage(c, data.ToList());
+        }
+
+        public static void PrintImage(String c, List<float> data)
+        {
+            Console.WriteLine("============================");
+            Console.WriteLine();
+            Console.WriteLine(c + ':');
+            Console.WriteLine();
+
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < data.Count; j++)
+            {
+                float val = data[j];
+                sb.Append(val > 0 ? '#' : '.');
+                if (sb.Length == 28)
+                {
+                    Console.WriteLine(sb.ToString());
+                    sb.Clear();
+                }
+            }
+            Console.WriteLine();
         }
     }
 }

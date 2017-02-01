@@ -1050,6 +1050,24 @@ namespace MXNetSharp
             }
         }
 
+        public List<float> ToList()
+        {
+            NDArray nd = this;
+            Context ctx = this.GetContext();
+            if (ctx.DeviceType != DeviceType.kCPU)
+                nd = this.Clone(Context.Cpu());
+            NDArray.WaitAll();
+            float* pData = nd.GetData();
+            int count = (int)nd.Size;
+            List<float> list = new List<float>(count);
+            for (int i = 0; i < count; i++)
+                list.Add(pData[i]);
+
+            if (nd != this) nd.Dispose();
+
+            return list;
+        }
+
         /// <summary>
         /// Load map of NDArrays from binary file.
         /// </summary>
@@ -2499,7 +2517,7 @@ namespace MXNetSharp
             {
                 var shape = in_shapes[i];
                 var arg_name = arg_name_list[i];
-                if (known_args.ContainsKey(arg_name))
+                if (known_args != null && known_args.ContainsKey(arg_name))
                 {
                     args_map[arg_name] = known_args[arg_name];
                 }
