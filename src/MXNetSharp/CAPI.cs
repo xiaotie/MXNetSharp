@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace MXNetSharp
@@ -931,6 +932,53 @@ namespace MXNetSharp
         public static extern int MXExecutorSetMonitorCallback(ExecutorHandle handle,
                                            ExecutorMonitorCallback callback,
                                            void* callback_handle);
+
+        #endregion
+
+        #region CustomOp
+
+        public struct CustomOpInfo
+        {
+            public void* forward;
+            public void* backward;
+            public void* del;
+            public void* p_forward;
+            public void* p_backward;
+            public void* p_del;
+        }
+
+        public struct CustomOpPropInfo
+        {
+            public void* list_arguments;
+            public void* list_outputs;
+            public void* infer_shape;
+            public void* declare_backward_dependency;
+            public void* create_operator;
+            public void* list_auxiliary_states;
+            public void* del;
+
+            public void* p_list_arguments;
+            public void* p_list_outputs;
+            public void* p_infer_shape;
+            public void* p_declare_backward_dependency;
+            public void* p_create_operator;
+            public void* p_list_auxiliary_states;
+            public void* p_del;
+        }
+
+        public delegate bool CustomOpPropCreator(String opType, int numKwargs, byte** keys, byte** values, CustomOpPropInfo* ret);
+
+        [DllImport(MXNET_DLL)]
+        public static extern int MXCustomOpRegister(String opType, void* creator);
+
+        public static int MXCustomOpRegister(String opType, CustomOpPropCreator creator)
+        {
+            GCHandle handle = GCHandle.Alloc(creator);
+            GCHandleManager.Instance.Add(handle);
+
+            IntPtr ptr = Marshal.GetFunctionPointerForDelegate(creator);
+            return MXCustomOpRegister(opType, (void*)ptr);
+        }
 
         #endregion
     }
